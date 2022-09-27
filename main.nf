@@ -7,20 +7,32 @@ workflow {
 	
 	ch_sample_manifest = Channel
 		.fromPath( params.sample_manifest )
-		.splitCsv( sep: \t, header: ['bam', 'sample'] )
-		.map { row -> tuple( file(row.bam), row.sample )}
+		.splitCsv( sep: \t, header: ['bam', 'sample', 'animal'] )
+		.map { row -> tuple( 
+			file("${params.bam_folder}/${row.bam}"), row.sample, row.animal 
+		)}
 	
-	CONVERT_BAM_TO_FASTQ ()
+	CONVERT_BAM_TO_FASTQ (
+		ch_sample_manifest
+	)
 	
-	ORIENT_FASTQ ()
+	ORIENT_FASTQ (
+		CONVERT_BAM_TO_FASTQ.out
+	)
 	
-	TRIM_FASTQ ()
+	TRIM_FASTQ (
+		ORIENT_FASTQ.out
+	)
 	
-	INDEX_FASTQ ()
+	INDEX_FASTQ (
+		TRIM_FASTQ.out
+	)
 	
 	INDEX_GUIDE_FASTA ()
 	
-	RUN_PBAA ()
+	RUN_PBAA (
+		TRIM_FASTQ.out
+	)
 	
 	RENAME_FOR_LAA ()
 	
@@ -70,6 +82,12 @@ workflow {
 	
 }
 
+
+// Derivative parameters, mostly for making specific results folders
+params.raw_fastqs = params.results + "/" + "00-fastq"
+params.orient_fastq = params.results + "/" + "01-orient-fastq"
+params.trimmed_fastq = params.results + "/" + "02-trim-fastq"
+
 	
 process CONVERT_BAM_TO_FASTQ {
 	
@@ -77,13 +95,72 @@ process CONVERT_BAM_TO_FASTQ {
 	// Convert these CCS files to FASTQ format, renaming FASTQ to use sample names
 	// The FASTQ filenames need to contain the locus (dpa, dpb, etc.) in the filenames
 	// so the appropriate processing parameters can be applied during orienting, trimming, and pbaa
+	
+	tag "${sample}"
+	publishDir params.raw_fastqs, mode: 'copy'
+	
+	cpus 1
+	
+	input:
+	tuple path(bam), val(sample), val(animal)
+	
+	output:
+	tuple path("*.fastq.gz"), val(sample), val(animal)
+	
+	script:
+	"""
+	samtools bam2fq ${bam} | gzip > ${sample}.fastq.gz
+	"""
 
 }
 
 process ORIENT_FASTQ {
 	
 	// use vsearch orient command to ensure reads are all in the same orientation
-
+	
+	tag "${sample}"
+	publishDir params.orient_fastq, mode: 'symlink'
+	
+	cpus 1
+	
+	input:
+	tuple path(fastq), val(sample), val(animal)
+	
+	output:
+	tuple path("*.fastq"), val(sample), val(animal)
+	
+	script:
+	if( sample.toLowerCase().contains("dpa") )
+		"""
+		vsearch --orient ${fastq} \
+		--db params.orient.dpa.orient_reference \
+		--fastqout ${sample}.fastq
+		"""
+	else if( sample.toLowerCase().contains("dpb") )
+		"""
+		vsearch --orient ${fastq} \
+		--db params.orient.dpb.orient_reference \
+		--fastqout ${sample}.fastq
+		"""
+	else if( sample.toLowerCase().contains("dqa") )
+		"""
+		vsearch --orient ${fastq} \
+		--db params.orient.dqa.orient_reference \
+		--fastqout ${sample}.fastq
+		"""
+	else if( sample.toLowerCase().contains("dqb") )
+		"""
+		vsearch --orient ${fastq} \
+		--db params.orient.dqb.orient_reference \
+		--fastqout ${sample}.fastq
+		"""
+	else if( sample.toLowerCase().contains("drb") )
+		"""
+		vsearch --orient ${fastq} \
+		--db params.orient.drb.orient_reference \
+		--fastqout ${sample}.fastq
+		"""
+	
 }
 
 process TRIM_FASTQ {
@@ -92,6 +169,88 @@ process TRIM_FASTQ {
 	// failing to remove these sequences leads to artificial alleles with primer sequences at ends
 	// need to trim to minlength or else short sequences choke pbaa
 	// since sequences are oriented, only need to trim ends in one orientation
+	
+	tag "${sample}"
+	publishDir params.trimmed_fastq, mode: 'symlink'
+	
+	cpus 1
+	
+	input:
+	tuple path(fastq), val(sample), val(animal)
+	
+	script:
+	if( sample.toLowerCase().contains("dpa") )
+		"""
+		bbduk.sh int=f \
+		in=${fastq} \
+		literal=params.trim.dpa.forward_primers \
+		restrictleft=50 ktrim=l k=8 qin=33 \
+		minlength=params.trim.dpa.minimum_length \
+		out=stdout.fastq \
+		| bbduk.sh int=f in=stdin.fastq \
+		literal=params.trim.dpa.reverse_primers \
+		restrictright=50 ktrim=r k=8 qin=33 \
+		minlength=params.trim.dpa.minimum_length \
+		out=${sample}.fastq
+		"""
+	else if( sample.toLowerCase().contains("dpb") )
+		"""
+		bbduk.sh int=f \
+		in=${fastq} \
+		literal=params.trim.dpb.forward_primers \
+		restrictleft=50 ktrim=l k=8 qin=33 \
+		minlength=params.trim.dpb.minimum_length \
+		out=stdout.fastq \
+		| bbduk.sh int=f in=stdin.fastq \
+		literal=params.trim.dpb.reverse_primers \
+		restrictright=50 ktrim=r k=8 qin=33 \
+		minlength=params.trim.dpb.minimum_length \
+		out=${sample}.fastq
+		"""
+	else if( sample.toLowerCase().contains("dqa") )
+		"""
+		bbduk.sh int=f \
+		in=${fastq} \
+		literal=params.trim.dqa.forward_primers \
+		restrictleft=50 ktrim=l k=8 qin=33 \
+		minlength=params.trim.dqa.minimum_length \
+		out=stdout.fastq \
+		| bbduk.sh int=f in=stdin.fastq \
+		literal=params.trim.dqa.reverse_primers \
+		restrictright=50 ktrim=r k=8 qin=33 \
+		minlength=params.trim.dqa.minimum_length \
+		out=${sample}.fastq
+		"""
+	else if( sample.toLowerCase().contains("dqb") )
+		"""
+		bbduk.sh int=f \
+		in=${fastq} \
+		literal=params.trim.dqb.forward_primers \
+		restrictleft=50 ktrim=l k=8 qin=33 \
+		minlength=params.trim.dqb.minimum_length \
+		out=stdout.fastq \
+		| bbduk.sh int=f in=stdin.fastq \
+		literal=params.trim.dqb.reverse_primers \
+		restrictright=50 ktrim=r k=8 qin=33 \
+		minlength=params.trim.dqb.minimum_length \
+		out=${sample}.fastq
+		"""
+	else if( sample.toLowerCase().contains("drb") )
+		"""
+		bbduk.sh int=f \
+		in=${fastq} \
+		literal=params.trim.drb.forward_primers \
+		restrictleft=50 ktrim=l k=8 qin=33 \
+		minlength=params.trim.drb.minimum_length \
+		out=stdout.fastq \
+		| bbduk.sh int=f in=stdin.fastq \
+		literal=params.trim.drb.reverse_primers \
+		restrictright=50 ktrim=r k=8 qin=33 \
+		minlength=params.trim.drb.minimum_length \
+		out=${sample}.fastq
+		"""
+	
+	
 
 }
 
@@ -99,6 +258,22 @@ process INDEX_FASTQ {
 	
 	// make index from each FASTQ file
 	// indexing is necessary for pbaa
+	
+	tag "${sample}"
+	publishDir params.trimmed_fastq, pattern: "*.fai" pattern mode: 'copy'
+	
+	cpus 1
+	
+	input:
+	tuple path(fastq), val(sample), val(animal)
+	
+	output:
+	tuple path(index), val(sample), val(animal)
+	
+	script:
+	"""
+	samtools faidx ${sample}.fastq.fai
+	"""
 
 }
 
