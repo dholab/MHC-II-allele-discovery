@@ -1,1 +1,1 @@
-Pipeline for calling MHC genotypes from high-depth whole exome sequence data
+Nextflow pipeline for discovering new MHC Class II alleles in Rhesus and Cynomolgus Macaques
