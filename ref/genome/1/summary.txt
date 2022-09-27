@@ -1,0 +1,13 @@
+#Summary
+#Generated on	Thu Sep 22 01:02:51 UTC 2022
+#Version	5
+chroms	1
+bases	126535
+defined	40535
+undefined	86000
+contigs	12
+scaffolds	12
+interpad	6000
+source	/scratch/results/11-muscle-cdna-identical/cdna_matches.fasta
+bytes	41862
+last modified	1663808570859
