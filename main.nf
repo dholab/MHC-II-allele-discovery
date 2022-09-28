@@ -100,35 +100,96 @@ workflow {
 		RENAME_PUTATIVE_ALLELE_CLUSTERS.out
 	)
 	
-	FILTER_EXACT_GDNA_MATCHES ()
+	FILTER_EXACT_GDNA_MATCHES (
+		MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA.out,
+		RENAME_PUTATIVE_ALLELE_CLUSTERS.out,
+		PARSE_IPD_GENBANK.out.gdna
+	)
 	
-	MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE ()
+	MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE (
+		FILTER_EXACT_GDNA_MATCHES.out.cdna_match,
+		PARSE_IPD_GENBANK.out.cdna
+	)
 	
-	FIND_MUSCLE_CDNA_GDNA_MATCHES ()
+	FIND_MUSCLE_CDNA_GDNA_MATCHES (
+		MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE.out.merged
+	)
 	
-	RENAME_MUSCLE_CDNA_MATCHES_FASTA ()
+	RENAME_MUSCLE_CDNA_MATCHES_FASTA (
+		FILTER_EXACT_GDNA_MATCHES.out.cdna_matches,
+		FIND_MUSCLE_CDNA_GDNA_MATCHES.out
+	)
 	
-	EXTRACT_NOVEL_SEQUENCES ()
+	EXTRACT_NOVEL_SEQUENCES (
+		FILTER_EXACT_GDNA_MATCHES.out.cdna_matches,
+		RENAME_MUSCLE_CDNA_MATCHES_FASTA.out
+	)
 	
-	MERGE_READS ()
+	MERGE_READS (
+		PARSE_IPD_GENBANK.out.gdna,
+		EXTRACT_NOVEL_SEQUENCES.out,
+		RENAME_MUSCLE_CDNA_MATCHES_FASTA.out
+	)
 	
-	CLUSTAL_ALIGN ()
+	CLUSTAL_ALIGN (
+		MERGE_READS.out,
+		EXTRACT_NOVEL_SEQUENCES.out
+	)
 	
-	PARSE_DISTANCES ()
+	PARSE_DISTANCES (
+		CLUSTAL_ALIGN.out.distances,
+		EXTRACT_NOVEL_SEQUENCES.out,
+		FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
+	)
 	
-	CREATE_GENOTYPING_FASTA ()
+	CREATE_GENOTYPING_FASTA (
+		RENAME_PUTATIVE_ALLELE_CLUSTERS.out,
+		PARSE_IPD_GENBANK.out.gdna,
+		FIND_MUSCLE_CDNA_GDNA_MATCHES.out,
+		PARSE_DISTANCES.out.closest_matches
+	)
 	
-	GENOTYPE_CSS ()
+	GENOTYPE_CSS (
+		CONVERT_BAM_TO_FASTQ.out,
+		CREATE_GENOTYPING_FASTA.out.classified
+	)
 	
-	CREATE_GENOTYPING_CSV ()
+	CREATE_MAMU_GENOTYPING_CSV (
+		GENOTYPE_CSS.out
+		.map { it -> tuple(it.sam, it.sample, it.animal)}
+		.filter { it[2] == "mamu" }
+		map { it[0], it[1], it[2] -> it[0] }
+		.collect()
+	)
 	
-	CREATE_GENOTYPING_PIVOT ()
+	CREATE_MAFA_GENOTYPING_CSV (
+		GENOTYPE_CSS.out
+		.map { it -> tuple(it.sam, it.sample, it.animal)}
+		.filter { it[2] == "mafa" }
+		map { it[0], it[1], it[2] -> it[0] }
+		.collect()
+	)
 	
-	PRELIMINARY_EXONERATE_PUTATIVE ()
+	CREATE_GENOTYPING_PIVOT (
+		CREATE_MAMU_GENOTYPING_CSV.out
+		.mix (
+			
+			CREATE_MAFA_GENOTYPING_CSV.out
+			
+		)
+	)
 	
-	PRELIMINARY_EXONERATE_PROCESS_GFF_PUTATIVE ()
+	PRELIMINARY_EXONERATE_PUTATIVE (
+		CREATE_GENOTYPING_FASTA.out.new_allele
+	)
 	
-	PRELIMINARY_EXONERATE_MERGE_CDS_PUTATIVE ()
+	PRELIMINARY_EXONERATE_PROCESS_GFF_PUTATIVE (
+		PRELIMINARY_EXONERATE_PUTATIVE.out.gff
+	)
+	
+	PRELIMINARY_EXONERATE_MERGE_CDS_PUTATIVE (
+		PRELIMINARY_EXONERATE_PROCESS_GFF_PUTATIVE.out.processed_gff
+	)
 	
 }
 
@@ -142,6 +203,11 @@ params.sample_clusters = params.results + "/" + "05-cluster_per_sample"
 params.merged_clusters = params.results + "/" + "06-merged_clusters"
 params.shared_clusters = params.results + "/" + "07-merged_clusters"
 params.ipd_ref_sep = params.results + "/" + "ipd_ref_separate"
+params.gdna_identical = params.results + "/" + "08-gdna-identical"
+params.cdna_identical = params.results + "/" + "09-muscle-cdna-identical"
+params.novel_alleles = params.results + "/" + "10-novel"
+params.genotyping = params.results + "/" + "11-genotyping"
+params.putative_new = params.results + "/" + "12-putative-new-alleles"
 
 	
 process CONVERT_BAM_TO_FASTQ {
@@ -367,8 +433,8 @@ process RUN_PBAA {
 	input:
 	tuple path(fastq), val(sample), val(animal)
 	path(index)
-	path(guide_fastas)
-	path(guide_fasta_indices)
+	each path(guide_fastas)
+	each path(guide_fasta_indices)
 	
 	output:
 	path("*_passed_cluster_sequences.fasta"), val(sample), val(animal)
@@ -504,7 +570,7 @@ process RENAME_CLUSTERS {
 	out=${sample}.fasta.gz \
 	prefix=${sample} \
 	addprefix=t \
-	threads=${task.cpus]
+	threads=${task.cpus}
 	"""
 
 }
@@ -667,7 +733,7 @@ process MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA {
 	// identify putative alleles whose sequences match full-length gDNA sequences already in IPD.
 	// save BAM file of reads that map to known IPD alleles and FASTA.gz file of reads that do not.
 	
-	tag "${animal}"
+	tag "${putative_animal}"
 	
 	cpus 1
 	
@@ -675,7 +741,7 @@ process MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA {
 	ref_animal == putative_animal
 	
 	input:
-	tuple path(gdna), val(ref_animal)
+	each tuple path(gdna), val(ref_animal)
 	tuple path(putative), val(putative_animal)
 	
 	output:
@@ -698,6 +764,41 @@ process FILTER_EXACT_GDNA_MATCHES {
 	
 	// filter mappings to only those that have NM:i:0 (no mismatches)
 	// use filterlines.sh tool
+	
+	tag "${putative_animal}"
+	publishDir params.gdna_identical, pattern: '*gdna_match.sam', mode: 'copy'
+	publishDir params.cdna_identical, pattern: '*no-gdna_match.fasta', mode: 'copy'
+	
+	cpus 1
+	
+	when:
+	ref_animal == putative_animal == fasta_animal
+	
+	input:
+	tuple path(sam), val(putative_animal)
+	tuple path(fasta), val(fasta_animal)
+	each tuple path(gdna), val(ref_animal)
+	
+	output:
+	tuple path("*_gdna_match.sam"), val(putative_animal), emit: gdna_matches
+	tuple path("*_no-gdna_match.fasta"), val(putative_animal), emit: cdna_matches
+	
+	script:
+	"""
+	filterlines.sh \
+	in=${sam} \
+	out=${putative_animal}_gdna_match.sam \
+	names=NM:i:0 \
+	substring=t \
+	include=t
+	
+	filterbyname.sh \
+	in=${fasta} \
+	names=${putative_animal}_gdna_match.sam \
+	out=${putative_animal}_no-gdna_match.fasta
+	"""
+	
+	
 
 }
 
@@ -712,12 +813,81 @@ process MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE {
 	// 
 	// modified in 27309 to minimize search space by first finding cDNA sequences within 50 substitutions of gDNA sequence
 	// instead of searching ~1000 cDNA sequences per gDNA sequence, this reduces the search space to ~30-50 in most cases
+	
+	tag "${putative_animal}"
+	publishDir params.cdna_identical, pattern: '*merged.aln', mode: 'copy'
+	publishDir params.cdna_identical, pattern: '*gdna_single_temp.fasta', mode: 'copy'
+	
+	when:
+	putative_animal == ref_animal_name
+	
+	cpus workflow.cpus
+	
+	input:
+	tuple path(cdna_matches), val(putative_animal)
+	
+	output:
+	tuple path("*merged.aln"), val(putative_animal), emit: merged
+	tuple path("*gdna_single_temp.fasta"), val(putative_animal)
+	
+	script:
+	"""
+	#!/usr/bin/python
+	
+	from Bio import SeqIO
+	from Bio.SeqRecord import SeqRecord
+	from Bio.Seq import Seq
+	
+	# create gDNA sequence object
+	for gdna_record in SeqIO.parse(input[0], "fasta"):
+		# print status message
+		print("Finding cDNA matches to " + str(gdna_record.name))
+		
+		# map gDNA to cDNA
+		# returning FASTA file of cDNA within 50nt
+		# write gDNA sequence to file
+		with open(output[1], "w") as output_handle:
+			SeqIO.write(gdna_record, output_handle, "fasta")
+			
+		# create cDNA sequence object from nearby matches
+		for cdna_record in SeqIO.parse(input[1], "fasta"):
+	
+			# write a tab delimited line containing the gdna_record.id, cdna_record.id, cdna_record length, and match length
+			# use command substitution to get the match length
+			# run MUSCLE on sequence objects, but do it in a stream to avoid a lot of file I/O
+			# pipe output to CLUSTALW format
+			# then count the number of '*' characters that denote matches between the two sequences
+			# this works for class I
+			# for class II, the cDNA can be longer than the gDNA so this doesn't work
+			# if the count of natching characters equals the number of cDNA characters, write to file
+			# add maxiters = 2 to accelerate processing per https://www.drive5.com/muscle/manual/compromise.html
+	
+			shell( 'echo "' + gdna_record.name  + '\t' + cdna_record.name + '\t' + str(len(gdna_record.seq)) + '\t' + str(len(cdna_record.seq)) + '\t' + ' \
+				$(echo ">' + gdna_record.name + '\n' + str(gdna_record.seq) + '\n>' + cdna_record.name + '\n' + str(cdna_record.seq) + '" \
+				| muscle -maxiters 2 -quiet -clwstrict \
+				| grep "^ " | grep "\*" -o | wc -l )" >> {output[0]}')
+	"""
+	
 
 }
 
 process FIND_MUSCLE_CDNA_GDNA_MATCHES {
 	
 	// run awk to find gdna sequences that fully match sequence of cdna
+	
+	tag "${putative_animal}"
+	publishDir params.cdna_identical, mode: 'copy'
+	
+	input:
+	tuple path(merged), val(putative_animal)
+	
+	output:
+	tuple path("*matches.aln"), val(putative_animal)
+	
+	script:
+	"""
+	awk \'{{if( $4 == $5  ) print $0}}\' ${merged} > ${putative_animal}_matches.aln
+	"""
 
 }
 
@@ -726,6 +896,49 @@ process RENAME_MUSCLE_CDNA_MATCHES_FASTA {
 	// input gDNA sequences
 	// change the name of the sequence header
 	// write output sequences that match cDNAs to new file
+	
+	tag "${gdna_animal}"
+	publishDir params.cdna_identical, mode: 'copy'
+	
+	when:
+	cdna_animal == gdna_animal
+	
+	input:
+	tuple path(cdna_matches), val(cdna_animal)
+	tuple path(matches_aln), val(gdna_animal)
+	
+	output:
+	tuple path("*cdna_matches.fasta"), val(cdna_animal)
+	
+	script:
+	"""
+	#!/usr/bin/python
+	
+	from Bio import SeqIO
+	from Bio.SeqRecord import SeqRecord
+	from Bio.Seq import Seq
+	import csv
+	
+	# create output file in case it is empty
+	shell('touch {output[0]}')
+	
+	# read input FASTA line-by-line
+	for record in SeqIO.parse(input[0], "fasta"):
+	
+		# parse file with gdna sequences that match cdna sequences
+		with open(input[1]) as tsvfile:
+			reader = csv.reader(tsvfile, delimiter='\t')
+			for row in reader:
+	
+				# test if name of sequence in cdna match file matches gdna sequence name
+				if row[0] == record.name:
+					# update name of sequence in output file
+					record.description = row[1] + '|' + row[0]
+	
+					# write to file
+					with open(output[0], "a") as handle:
+						SeqIO.write(record, handle, "fasta")
+	"""
 	
 }
 
@@ -736,12 +949,53 @@ process EXTRACT_NOVEL_SEQUENCES {
 	// we can submit them to IPD even if they don't match a current IPD cDNA sequence.
 	// 
 	// Map gDNA sequences to cDNAs and report reads that don't map
+	
+	tag "${cdna_animal}"
+	publishDir params.novel_alleles, mode: 'copy'
+	
+	when:
+	no-gdna_animal == cdna_animal
+	
+	input:
+	tuple path(no-gdna_match), val(no-gdna_animal)
+	tuple path(cdna_matches), val(cdna_animal)
+	
+	output:
+	tuple path("*novel.fasta"), val(cdna_animal)
+	
+	script:
+	if( cdna_matches.isEmpty() )
+		"""
+		touch ${no-gdna_animal}_novel.fasta
+		"""
+	else
+		"""
+		mapPacBio.sh in=${no-gdna_match} ref=${cdna_matches} outu=${no-gdna_animal}_novel.fasta subfilter=0
+		"""
 
 }
 
 process MERGE_READS {
 	
 	// concatenate files to align with clustal omega
+	
+	tag "${novel_animal}"
+	
+	when:
+	ref_animal == novel_animal == cdna_match_animal
+	
+	input:
+	each tuple path(gdna_ref), val(ref_animal)
+	tuple path(novel), val(novel_animal)
+	tuple path(cdna_matches), val(cdna_match_animal)
+	
+	output:
+	tuple path("*reads.fasta"), val(reads_animal)
+	
+	script:
+	"""
+	cat ${gdna_ref} ${novel} ${cdna_matches} > ${novel_animal}_reads.fasta
+	"""
 
 }
 
@@ -750,12 +1004,57 @@ process CLUSTAL_ALIGN {
 	// align reads with clustal omega
 	// generate alignment in fasta format and distance matrix
 	// distance matrix can be used to parse closest matches to known alleles
+	
+	tag "${novel_animal}"
+	publishDir params.novel_alleles, pattern: '*distance.txt', mode: 'copy'
+	
+	when:
+	reads_animal == novel_animal
+	
+	cpus workflow.cpus
+	
+	input:
+	tuple path(reads), val(reads_animal)
+	tuple path(novel), val(novel_animal)
+	
+	output:
+	tuple path("*aligned.fasta"), val(reads_animal)
+	tuple path("*distances.txt"), val(reads_animal), emit: distances
+	
+	script:
+	"""
+	clustalo \
+	--infile=${reads} \
+	--outfile=${reads_animal}_aligned.fasta \
+	--distmat-out=${reads_animal}_distances.txt \
+	--threads=${task.cpus} \
+	--full
+	"""
 
 }
 
 process PARSE_DISTANCES {
 	
 	// parse clustal omega distances to find alleles in reference database and cDNA extensions that are nearest neighbors to novel sequences
+	
+	tag "${clustal_animal}"
+	
+	when:
+	clustal_animal == novel_animal == match_animal
+	
+	input:
+	tuple path(distances), val(clustal_animal)
+	tuple path(novel), val(novel_animal)
+	tuple path(cdna_matches), val(match_animal)
+	
+	output:
+	tuple path("*novel_closest_matches.xlsx"), val(clustal_animal), emit: closest_matches
+	tuple path("*distances_tmp.txt"), val(clustal_animal)
+	
+	script:
+	"""
+	parse_clustalo_distances.py ${clustal_animal}
+	"""
 
 }
 
@@ -765,6 +1064,28 @@ process CREATE_GENOTYPING_FASTA {
 	// need to create FASTA file that contains all of these putative_alleles along with their classification
 	// 
 	// 27319 - create FASTA file that only has cDNA extensions and novel alleles
+	
+	tag "${putative_animal}"
+	publishDir params.genotyping, pattern: 'classified.fasta', mode: 'copy'
+	publishDir params.putative_new, pattern: '*putative.fasta', mode: 'copy'
+	
+	when:
+	putative_animal == ref_animal == match_animal == closest_animal
+	
+	input:
+	tuple path(putative), val(putative_animal)
+	each tuple path(gdna_ref), val(ref_animal)
+	tuple path(matches), val(match_animal)
+	tuple path(closest_matches), val(closest_animal)
+	
+	output:
+	tuple path("*classified.fasta"), val(putative_animal), emit: classified
+	tuple path("*putative.fasta"), val(putative_animal), emit: new_allele
+	
+	script:
+	"""
+	create_genotyping_fasta.py ${putative_animal}
+	"""
 
 }
 
@@ -773,18 +1094,92 @@ process GENOTYPE_CSS {
 	// identify reference sequences that are fully contained in CCS reads
 	// use trimmed full-length reads for mapping
 	// use higher minratio and smaller maxindel per emails with Brian Bushnell
+	
+	tag "${sample}"
+	publishDir params.genotyping, pattern: '*.sam', mode: 'symlink'
+	
+	when:
+	animal == classified_animal
+	
+	cpus = 1
+	
+	input:
+	tuple path(fastq), val(sample), val(animal)
+	each tuple path(classified), val(classified_animal)
+	
+	output:
+	tuple path('*.sam'), val(sample), val(animal)
+	
+	script:
+	"""
+	minimap2 \
+	${fastq} \
+	${classified} \
+	-ax map-hifi --eqx -t 3 \
+	| reformat.sh \
+	in=stdin.sam \
+	out=${sample}.sam \
+	ref=${classified} \
+	noheader=t \
+	subfilter=0 \
+	threads=1 \
+	ow=t
+	"""
 
 }
 
-process CREATE_GENOTYPING_CSV {
+process CREATE_MAMU_GENOTYPING_CSV {
 	
 	// create CSV file containing sample name, allele name, and count of reads matching allele
+	
+	input:
+	path(sam_list)
+	
+	output:
+	tuple path("*.csv"), val("mamu")
+	
+	script:
+	"""
+	create_genotyping_csv.py "mamu"
+	"""
 
 }
+
+
+process CREATE_MAFA_GENOTYPING_CSV {
+	
+	// create CSV file containing sample name, allele name, and count of reads matching allele
+	
+	input:
+	path(sam_list)
+	
+	output:
+	tuple path("*.csv"), val("mafa")
+	
+	script:
+	"""
+	create_genotyping_csv.py "mafa"
+	"""
+
+}
+
 
 process CREATE_GENOTYPING_PIVOT {
 	
 	// make Excel-formatted pivot table from genotyping CSV
+	
+	tag "${animal}"
+	publishDir params.genotyping, mode: 'move'
+	
+	input:
+	tuple path(csv), val(animal)
+	
+	output:
+	
+	script:
+	"""
+	genotyping.py ${animal}
+	"""
 
 }
 
@@ -801,6 +1196,63 @@ process PRELIMINARY_EXONERATE_PUTATIVE {
 	// then re-run exonerate in protein mode to get more accurate annotations
 	// 
 	// 27319 - create annotations from FASTA file as named in genotyping file
+	
+	tag "${animal}"
+	
+	input:
+	tuple path(fasta), val(animal)
+	
+	output:
+	tuple path("*mapped.gff"), val(animal), emit: gff
+	tuple path("*gdna_single_temp.fasta"), val(animal)
+	
+	script:
+	"""
+	#!/usr/bin/python
+	
+	from Bio import SeqIO
+	from Bio.SeqRecord import SeqRecord
+	from Bio.Seq import Seq
+	import csv
+	
+	# create output file in case it is empty
+	if os.stat(fasta).st_size == 0:
+		shell('touch fasta')
+	else:
+		# read input FASTA line-by-line
+		for record in SeqIO.parse(input[0], "fasta"):
+			if 'dpa' in (record.name).lower():
+				mrna_reference = config['annotate']['dpa']['mrna_reference']
+				cds_annotation = config['annotate']['dpa']['cds_annotation']
+			elif 'dpb' in (record.name).lower():
+				mrna_reference = config['annotate']['dpb']['mrna_reference']
+				cds_annotation = config['annotate']['dpb']['cds_annotation']
+			elif 'dqa' in (record.name).lower():
+				mrna_reference = config['annotate']['dqa']['mrna_reference']
+				cds_annotation = config['annotate']['dqa']['cds_annotation']
+			elif 'dqb' in (record.name).lower():
+				mrna_reference = config['annotate']['dqb']['mrna_reference']
+				cds_annotation = config['annotate']['dqb']['cds_annotation']
+			elif 'drb' in (record.name).lower():
+				mrna_reference = config['annotate']['drb']['mrna_reference']
+				cds_annotation = config['annotate']['drb']['cds_annotation']
+			
+			with open(output[1], "w") as output_handle:
+				SeqIO.write(record, output_handle, "fasta")
+			
+			# run exonerate        
+			shell('exonerate \
+			--showtargetgff \
+			--showalignment FALSE \
+			--showvulgar FALSE \
+			--model cdna2genome \
+			--query ' + mrna_reference + ' \
+			--target {output[1]} \
+			--refine full \
+			--annotation ' + cds_annotation + ' \
+			>> {output[0]}')
+	
+	"""
 
 }
 
@@ -809,6 +1261,22 @@ process PRELIMINARY_EXONERATE_PROCESS_GFF_PUTATIVE {
 	// prepare exonerate GFF output for Geneious
 	// need to pass experiment and paths to needed tar.gz files
 	// script is in Docker container
+	
+	tag "${animal}"
+	
+	input:
+	tuple path(gff), val(animal)
+	
+	output:
+	tuple path("*processed.gff"), val(animal)
+	
+	script:
+	"""
+	bash /scripts/process-gff.sh \
+	-e ${gff}  \
+	-p 21295-exonerate_gff_to_alignment_gff3.pl \
+	-o ${animal}_processed.gff
+	"""
 
 }
 
@@ -820,6 +1288,20 @@ process PRELIMINARY_EXONERATE_MERGE_CDS_PUTATIVE {
 	// so they view as a single annotation in Geneious and can be automatically translated.
 	// 
 	// Since we only work with CDS annotations, only print these to final file.
+	
+	tag "${animal}"
+	publishDir params.putative_new, mode: 'move'
+	
+	input:
+	tuple path(gff), val(animal)
+	
+	output:
+	path("*putative.gff")
+	
+	script:
+	"""
+	awk \'{{if ($3 ~ /cds/) print $1"\t"$2"\t""CDS""\t"$4,"\t"$5"\t"$6"\t"$7"\t"$8"\t""Name=CDS;ID=CDS" }}\' ${gff} >> ${animal}_putative.gff
+	"""
 
 }
 
