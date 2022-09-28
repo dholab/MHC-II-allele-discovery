@@ -3,11 +3,9 @@
 nextflow.enable.dsl = 2
 
 
-// Specifying additional input file types
-params.pbaa_guides = params.pbaa_resources + "/" + "*.fasta"
-params.ipd_refs = params.classify_resources + "/" + "*.gbk"
 
-
+// WORKFLOW SPECIFICATION
+// --------------------------------------------------------------- //
 workflow {
 	
 	// input channels
@@ -96,8 +94,8 @@ workflow {
 	)
 	
 	MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA (
-		PARSE_IPD_GENBANK.gdna,
-		RENAME_PUTATIVE_ALLELE_CLUSTERS.out
+		RENAME_PUTATIVE_ALLELE_CLUSTERS.out,
+		PARSE_IPD_GENBANK.out.gdna
 	)
 	
 	FILTER_EXACT_GDNA_MATCHES (
@@ -192,8 +190,12 @@ workflow {
 	)
 	
 }
+// --------------------------------------------------------------- //
 
 
+
+// DERIVATIVE PARAMETER SPECIFICATION
+// --------------------------------------------------------------- //
 // Derivative parameters, mostly for making specific results folders
 params.raw_fastqs = params.results + "/" + "00-fastq"
 params.orient_fastq = params.results + "/" + "01-orient-fastq"
@@ -209,6 +211,14 @@ params.novel_alleles = params.results + "/" + "10-novel"
 params.genotyping = params.results + "/" + "11-genotyping"
 params.putative_new = params.results + "/" + "12-putative-new-alleles"
 
+params.pbaa_guides = params.pbaa_resources + "/" + "*.fasta"
+params.ipd_refs = params.classify_resources + "/" + "*.gbk"
+// --------------------------------------------------------------- //
+
+
+
+// PROCESS SPECIFICATION 
+// --------------------------------------------------------------- //
 	
 process CONVERT_BAM_TO_FASTQ {
 	
@@ -819,12 +829,11 @@ process MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE {
 	publishDir params.cdna_identical, pattern: '*gdna_single_temp.fasta', mode: 'copy'
 	
 	when:
-	putative_animal == ref_animal_name
-	
-	cpus workflow.cpus
+	putative_animal == ref_animal
 	
 	input:
 	tuple path(cdna_matches), val(putative_animal)
+	each tuple path(cdna_ref), val(ref_animal)
 	
 	output:
 	tuple path("*merged.aln"), val(putative_animal), emit: merged
@@ -839,18 +848,18 @@ process MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE {
 	from Bio.Seq import Seq
 	
 	# create gDNA sequence object
-	for gdna_record in SeqIO.parse(input[0], "fasta"):
+	for gdna_record in SeqIO.parse(${cdna_matches}, "fasta"):
 		# print status message
 		print("Finding cDNA matches to " + str(gdna_record.name))
 		
 		# map gDNA to cDNA
 		# returning FASTA file of cDNA within 50nt
 		# write gDNA sequence to file
-		with open(output[1], "w") as output_handle:
+		with open("${putative_animal}_gdna_single_temp.fasta", "w") as output_handle:
 			SeqIO.write(gdna_record, output_handle, "fasta")
 			
 		# create cDNA sequence object from nearby matches
-		for cdna_record in SeqIO.parse(input[1], "fasta"):
+		for cdna_record in SeqIO.parse(${cdna_ref}, "fasta"):
 	
 			# write a tab delimited line containing the gdna_record.id, cdna_record.id, cdna_record length, and match length
 			# use command substitution to get the match length
@@ -865,7 +874,7 @@ process MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE {
 			shell( 'echo "' + gdna_record.name  + '\t' + cdna_record.name + '\t' + str(len(gdna_record.seq)) + '\t' + str(len(cdna_record.seq)) + '\t' + ' \
 				$(echo ">' + gdna_record.name + '\n' + str(gdna_record.seq) + '\n>' + cdna_record.name + '\n' + str(cdna_record.seq) + '" \
 				| muscle -maxiters 2 -quiet -clwstrict \
-				| grep "^ " | grep "\*" -o | wc -l )" >> {output[0]}')
+				| grep "^ " | grep "\*" -o | wc -l )" >> ${putative_animal}_merged.aln')
 	"""
 	
 
@@ -923,10 +932,10 @@ process RENAME_MUSCLE_CDNA_MATCHES_FASTA {
 	shell('touch {output[0]}')
 	
 	# read input FASTA line-by-line
-	for record in SeqIO.parse(input[0], "fasta"):
+	for record in SeqIO.parse(${cdna_matches}, "fasta"):
 	
 		# parse file with gdna sequences that match cdna sequences
-		with open(input[1]) as tsvfile:
+		with open(${matches_aln}) as tsvfile:
 			reader = csv.reader(tsvfile, delimiter='\t')
 			for row in reader:
 	
@@ -936,7 +945,7 @@ process RENAME_MUSCLE_CDNA_MATCHES_FASTA {
 					record.description = row[1] + '|' + row[0]
 	
 					# write to file
-					with open(output[0], "a") as handle:
+					with open("${cdna_animal}_cdna_matches.fasta", "a") as handle:
 						SeqIO.write(record, handle, "fasta")
 	"""
 	
@@ -1010,8 +1019,6 @@ process CLUSTAL_ALIGN {
 	
 	when:
 	reads_animal == novel_animal
-	
-	cpus workflow.cpus
 	
 	input:
 	tuple path(reads), val(reads_animal)
@@ -1216,28 +1223,28 @@ process PRELIMINARY_EXONERATE_PUTATIVE {
 	import csv
 	
 	# create output file in case it is empty
-	if os.stat(fasta).st_size == 0:
-		shell('touch fasta')
+	if os.stat(${fasta}).st_size == 0:
+		shell('touch ${fasta}')
 	else:
 		# read input FASTA line-by-line
 		for record in SeqIO.parse(input[0], "fasta"):
 			if 'dpa' in (record.name).lower():
-				mrna_reference = config['annotate']['dpa']['mrna_reference']
-				cds_annotation = config['annotate']['dpa']['cds_annotation']
+				mrna_reference = ${params.annotate.dpa.mrna_reference}
+				cds_annotation = ${params.annotate.dpa.cds_annotation}
 			elif 'dpb' in (record.name).lower():
-				mrna_reference = config['annotate']['dpb']['mrna_reference']
-				cds_annotation = config['annotate']['dpb']['cds_annotation']
+				mrna_reference = ${params.annotate.dpb.mrna_reference}
+				cds_annotation = ${params.annotate.dpb.cds_annotation}
 			elif 'dqa' in (record.name).lower():
-				mrna_reference = config['annotate']['dqa']['mrna_reference']
-				cds_annotation = config['annotate']['dqa']['cds_annotation']
+				mrna_reference = ${params.annotate.dqa.mrna_reference}
+				cds_annotation = ${params.annotate.dqa.cds_annotation}
 			elif 'dqb' in (record.name).lower():
-				mrna_reference = config['annotate']['dqb']['mrna_reference']
-				cds_annotation = config['annotate']['dqb']['cds_annotation']
+				mrna_reference = ${params.annotate.dqb.mrna_reference}
+				cds_annotation = ${params.annotate.dqb.cds_annotation}
 			elif 'drb' in (record.name).lower():
-				mrna_reference = config['annotate']['drb']['mrna_reference']
-				cds_annotation = config['annotate']['drb']['cds_annotation']
+				mrna_reference = ${params.annotate.drb.mrna_reference}
+				cds_annotation = ${params.annotate.drb.cds_annotation}
 			
-			with open(output[1], "w") as output_handle:
+			with open("${animal}_gdna_single_temp.fasta", "w") as output_handle:
 				SeqIO.write(record, output_handle, "fasta")
 			
 			# run exonerate        
@@ -1247,10 +1254,10 @@ process PRELIMINARY_EXONERATE_PUTATIVE {
 			--showvulgar FALSE \
 			--model cdna2genome \
 			--query ' + mrna_reference + ' \
-			--target {output[1]} \
+			--target ${animal}_gdna_single_temp.fasta \
 			--refine full \
 			--annotation ' + cds_annotation + ' \
-			>> {output[0]}')
+			>> ${animal}_mapped.gff')
 	
 	"""
 
@@ -1304,4 +1311,4 @@ process PRELIMINARY_EXONERATE_MERGE_CDS_PUTATIVE {
 	"""
 
 }
-
+// --------------------------------------------------------------- //
