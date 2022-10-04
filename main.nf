@@ -260,31 +260,31 @@ process ORIENT_FASTQ {
 	if( sample.toLowerCase().contains("dpa") )
 		"""
 		vsearch --orient ${fastq} \
-		--db params.orient.dpa.orient_reference \
+		--db params.dpa_reference \
 		--fastqout ${sample}.fastq
 		"""
 	else if( sample.toLowerCase().contains("dpb") )
 		"""
 		vsearch --orient ${fastq} \
-		--db params.orient.dpb.orient_reference \
+		--db params.dpb_reference \
 		--fastqout ${sample}.fastq
 		"""
 	else if( sample.toLowerCase().contains("dqa") )
 		"""
 		vsearch --orient ${fastq} \
-		--db params.orient.dqa.orient_reference \
+		--db params.dqa_reference \
 		--fastqout ${sample}.fastq
 		"""
 	else if( sample.toLowerCase().contains("dqb") )
 		"""
 		vsearch --orient ${fastq} \
-		--db params.orient.dqb.orient_reference \
+		--db params.dqb_reference \
 		--fastqout ${sample}.fastq
 		"""
 	else if( sample.toLowerCase().contains("drb") )
 		"""
 		vsearch --orient ${fastq} \
-		--db params.orient.drb.orient_reference \
+		--db params.drb_reference \
 		--fastqout ${sample}.fastq
 		"""
 	
@@ -313,70 +313,70 @@ process TRIM_FASTQ {
 		"""
 		bbduk.sh int=f \
 		in=${fastq} \
-		literal=params.trim.dpa.forward_primers \
+		literal=params.dpa_forward_primers \
 		restrictleft=50 ktrim=l k=8 qin=33 \
-		minlength=params.trim.dpa.minimum_length \
+		minlength=params.dpa_minimum_length \
 		out=stdout.fastq \
 		| bbduk.sh int=f in=stdin.fastq \
-		literal=params.trim.dpa.reverse_primers \
+		literal=params.dpa.reverse_primers \
 		restrictright=50 ktrim=r k=8 qin=33 \
-		minlength=params.trim.dpa.minimum_length \
+		minlength=params.dpa_minimum_length \
 		out=${sample}.fastq
 		"""
 	else if( sample.toLowerCase().contains("dpb") )
 		"""
 		bbduk.sh int=f \
 		in=${fastq} \
-		literal=params.trim.dpb.forward_primers \
+		literal=params.dpb_forward_primers \
 		restrictleft=50 ktrim=l k=8 qin=33 \
-		minlength=params.trim.dpb.minimum_length \
+		minlength=params.dpb_minimum_length \
 		out=stdout.fastq \
 		| bbduk.sh int=f in=stdin.fastq \
-		literal=params.trim.dpb.reverse_primers \
+		literal=params.dpb.reverse_primers \
 		restrictright=50 ktrim=r k=8 qin=33 \
-		minlength=params.trim.dpb.minimum_length \
+		minlength=params.dpb_minimum_length \
 		out=${sample}.fastq
 		"""
 	else if( sample.toLowerCase().contains("dqa") )
 		"""
 		bbduk.sh int=f \
 		in=${fastq} \
-		literal=params.trim.dqa.forward_primers \
+		literal=params.dqa_forward_primers \
 		restrictleft=50 ktrim=l k=8 qin=33 \
-		minlength=params.trim.dqa.minimum_length \
+		minlength=params.dqa_minimum_length \
 		out=stdout.fastq \
 		| bbduk.sh int=f in=stdin.fastq \
-		literal=params.trim.dqa.reverse_primers \
+		literal=params.dqa.reverse_primers \
 		restrictright=50 ktrim=r k=8 qin=33 \
-		minlength=params.trim.dqa.minimum_length \
+		minlength=params.dqa_minimum_length \
 		out=${sample}.fastq
 		"""
 	else if( sample.toLowerCase().contains("dqb") )
 		"""
 		bbduk.sh int=f \
 		in=${fastq} \
-		literal=params.trim.dqb.forward_primers \
+		literal=params.dqb_forward_primers \
 		restrictleft=50 ktrim=l k=8 qin=33 \
-		minlength=params.trim.dqb.minimum_length \
+		minlength=params.dqb_minimum_length \
 		out=stdout.fastq \
 		| bbduk.sh int=f in=stdin.fastq \
-		literal=params.trim.dqb.reverse_primers \
+		literal=params.dqb.reverse_primers \
 		restrictright=50 ktrim=r k=8 qin=33 \
-		minlength=params.trim.dqb.minimum_length \
+		minlength=params.dqb_minimum_length \
 		out=${sample}.fastq
 		"""
 	else if( sample.toLowerCase().contains("drb") )
 		"""
 		bbduk.sh int=f \
 		in=${fastq} \
-		literal=params.trim.drb.forward_primers \
+		literal=params.drb_forward_primers \
 		restrictleft=50 ktrim=l k=8 qin=33 \
-		minlength=params.trim.drb.minimum_length \
+		minlength=params.drb_minimum_length \
 		out=stdout.fastq \
 		| bbduk.sh int=f in=stdin.fastq \
-		literal=params.trim.drb.reverse_primers \
+		literal=params.drb.reverse_primers \
 		restrictright=50 ktrim=r k=8 qin=33 \
-		minlength=params.trim.drb.minimum_length \
+		minlength=params.drb_minimum_length \
 		out=${sample}.fastq
 		"""
 	
@@ -1226,20 +1226,20 @@ process PRELIMINARY_EXONERATE_PUTATIVE {
 		# read input FASTA line-by-line
 		for record in SeqIO.parse(input[0], "fasta"):
 			if 'dpa' in (record.name).lower():
-				mrna_reference = ${params.annotate.dpa.mrna_reference}
-				cds_annotation = ${params.annotate.dpa.cds_annotation}
+				mrna_reference = ${params.dpa_mrna_reference}
+				cds_annotation = ${params.dpa_cds_annotation}
 			elif 'dpb' in (record.name).lower():
-				mrna_reference = ${params.annotate.dpb.mrna_reference}
-				cds_annotation = ${params.annotate.dpb.cds_annotation}
+				mrna_reference = ${params.dpb_mrna_reference}
+				cds_annotation = ${params.dpb_cds_annotation}
 			elif 'dqa' in (record.name).lower():
-				mrna_reference = ${params.annotate.dqa.mrna_reference}
-				cds_annotation = ${params.annotate.dqa.cds_annotation}
+				mrna_reference = ${params.dqa_mrna_reference}
+				cds_annotation = ${params.dqa_cds_annotation}
 			elif 'dqb' in (record.name).lower():
-				mrna_reference = ${params.annotate.dqb.mrna_reference}
-				cds_annotation = ${params.annotate.dqb.cds_annotation}
+				mrna_reference = ${params.dqb_mrna_reference}
+				cds_annotation = ${params.dqb_cds_annotation}
 			elif 'drb' in (record.name).lower():
-				mrna_reference = ${params.annotate.drb.mrna_reference}
-				cds_annotation = ${params.annotate.drb.cds_annotation}
+				mrna_reference = ${params.drb_mrna_reference}
+				cds_annotation = ${params.drb_cds_annotation}
 			
 			with open("${animal}_gdna_single_temp.fasta", "w") as output_handle:
 				SeqIO.write(record, output_handle, "fasta")
