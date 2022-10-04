@@ -1,4 +1,11 @@
 work/
+data/
+.nextflow/
+results/
 
 .DS_Store
 .Rhistory
+.nextflow.log*
+trace.txt*
+report.html*
+test.nf

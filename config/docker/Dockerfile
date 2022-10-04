@@ -9,6 +9,7 @@ RUN conda update -n base -c defaults conda
 RUN conda install mamba=0.13.0 -n base -c conda-forge
 
 # install tools needed for gdna amplicon allele discovery workflow
+RUN apt-get update && apt-get install -y procps && rm -rf /var/lib/apt/lists/*
 RUN mamba install -y -c conda-forge -c bioconda nextflow=22.04
 RUN mamba install -y -c conda-forge -c bioconda bbmap=38.90
 RUN mamba install -y -c conda-forge -c bioconda vsearch=2.17.0

@@ -11,10 +11,8 @@ workflow {
 	// input channels
 	ch_sample_manifest = Channel
 		.fromPath( params.sample_manifest )
-		.splitCsv( sep: \t, header: ['bam', 'sample', 'animal'] )
-		.map { row -> tuple( 
-			file("${params.bam_folder}/${row.bam}"), row.sample, row.animal 
-		)}
+		.splitCsv( header: ['bam', 'sample', 'animal'] )
+		.map { row -> tuple( "${params.bam_folder}/${row.bam}", row.sample, row.animal )}
 	
 	ch_pbaa_guides = Channel
 		.fromPath( params.pbaa_guides )
