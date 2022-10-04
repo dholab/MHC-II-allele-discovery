@@ -5,33 +5,36 @@ from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
 import pandas as pd
 import os
+import sys
+
+animal = sys.argv[1]
 
 # create dictionary of classifications
 classified = {}
 	
 # add cdna matches
-with open(snakemake.input[2]) as tsvfile:
+with open(str(animal) + "_matches.aln") as tsvfile:
 	reader = csv.reader(tsvfile, delimiter='\t')
 	for row in reader:
 		classified[row[0]] = ['extend-cdna', utils.removeSpecialCharacters(row[1])]
 		
 # add novel matches
-if os.stat(snakemake.input[3]).st_size > 0:
-	novel_df = pd.read_excel(snakemake.input[3], index_col=0)
+if os.stat(str(animal) + "_novel_closest_matches.xlsx").st_size > 0:
+	novel_df = pd.read_excel(str(animal) + "_novel_closest_matches.xlsx", index_col=0)
 	
 	for index, row in novel_df.iterrows():
 		classified[str(row[0])] = ['novel', utils.removeSpecialCharacters(row[1] + '|' + row[2] + '|' + row[3] + '|' + row[4] + '|' + row[5])]
 
 # create renamed FASTA file with updated names for genotyping
-with open(snakemake.output[0], "a") as handle:
+with open(str(animal) + "_classified.fasta", "a") as handle:
 	# add IPD gDNA sequences
-	with open(snakemake.input[1], "r") as input_handle:
+	with open(str(animal) + "_gdna_reference.fasta", "r") as input_handle:
 		sequences = SeqIO.parse(input_handle, "fasta")
 		SeqIO.write(sequences, handle, "fasta")
 	
 	# concatenate cDNA extensions and novel sequences with known IPD gDNA sequences
 	# this enables genotyping against an expanded gDNA library even when there aren't a huge number of gDNA matches in this specific set of samples		
-	for record in SeqIO.parse(snakemake.input[0], "fasta"):
+	for record in SeqIO.parse(str(animal) + "_putative_alleles.fasta", "fasta"):
 		# get information for matching sequence
 		allele_data = classified.get(record.name)
 		
@@ -49,10 +52,10 @@ with open(snakemake.output[0], "a") as handle:
 # create FASTA with only cDNA extension and novel sequences
 # Roger prefers having the names of these FASTA sequences matching the genotyping table
 
-with open(snakemake.output[1], "a") as handle:	
+with open(str(animal) + "_putative.fasta", "a") as handle:	
 	# concatenate cDNA extensions and novel sequences with known IPD gDNA sequences
 	# this enables genotyping against an expanded gDNA library even when there aren't a huge number of gDNA matches in this specific set of samples		
-	for record in SeqIO.parse(snakemake.input[0], "fasta"):
+	for record in SeqIO.parse(str(animal) + "_putative_alleles.fasta", "fasta"):
 		# get information for matching sequence
 		allele_data = classified.get(record.name)
 		

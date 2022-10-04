@@ -1,7 +1,10 @@
 import pandas as pd
+import sys
+
+animal = sys.argv[1]
 
 # import csv
-df = pd.read_csv(snakemake.input[0], sep=',', names=['animal', 'genotype'])
+df = pd.read_csv(str(animal) + "_genotyping.csv"], sep=',', names=['animal', 'genotype'])
 
 # add column to hold counts
 df['ct'] = 1

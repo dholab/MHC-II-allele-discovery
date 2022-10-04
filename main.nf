@@ -64,7 +64,6 @@ workflow {
 	
 	MERGE_PER_MAMU_CLUSTERS (
 		RENAME_CLUSTERS.out
-		.map { it -> tuple(it.fasta, it.sample, it.animal)}
 		.filter { it[2] == "mamu" }
 		.map { it[0], it[1], it[2] -> it[0] }
 		.collect()
@@ -72,7 +71,6 @@ workflow {
 	
 	MERGE_PER_MAFA_CLUSTERS (
 		RENAME_CLUSTERS.out
-		.map { it -> tuple(it.fasta, it.sample, it.animal)}
 		.filter { it[2] == "mafa" }
 		.map { it[0], it[1], it[2] -> it[0] }
 		.collect()
@@ -200,16 +198,16 @@ workflow {
 params.raw_fastqs = params.results + "/" + "00-fastq"
 params.orient_fastq = params.results + "/" + "01-orient-fastq"
 params.trimmed_fastq = params.results + "/" + "02-trim-fastq"
-params.pbaa_clusters = params.results + "/" + "04-pbaa/"
-params.sample_clusters = params.results + "/" + "05-cluster_per_sample"
-params.merged_clusters = params.results + "/" + "06-merged_clusters"
-params.shared_clusters = params.results + "/" + "07-merged_clusters"
+params.pbaa_clusters = params.results + "/" + "03-pbaa/"
+params.sample_clusters = params.results + "/" + "04-cluster_per_sample"
+params.merged_clusters = params.results + "/" + "05-merged_clusters"
+params.shared_clusters = params.results + "/" + "06-merged_clusters"
 params.ipd_ref_sep = params.results + "/" + "ipd_ref_separate"
-params.gdna_identical = params.results + "/" + "08-gdna-identical"
-params.cdna_identical = params.results + "/" + "09-muscle-cdna-identical"
-params.novel_alleles = params.results + "/" + "10-novel"
-params.genotyping = params.results + "/" + "11-genotyping"
-params.putative_new = params.results + "/" + "12-putative-new-alleles"
+params.gdna_identical = params.results + "/" + "07-gdna-identical"
+params.cdna_identical = params.results + "/" + "08-muscle-cdna-identical"
+params.novel_alleles = params.results + "/" + "09-novel"
+params.genotyping = params.results + "/" + "10-genotyping"
+params.putative_new = params.results + "/" + "11-putative-new-alleles"
 
 params.pbaa_guides = params.pbaa_resources + "/" + "*.fasta"
 params.ipd_refs = params.classify_resources + "/" + "*.gbk"
@@ -308,6 +306,9 @@ process TRIM_FASTQ {
 	
 	input:
 	tuple path(fastq), val(sample), val(animal)
+	
+	output:
+	tuple path("*.fastq"), val(sample), val(animal)
 	
 	script:
 	if( sample.toLowerCase().contains("dpa") )
@@ -704,7 +705,7 @@ process RENAME_PUTATIVE_ALLELE_CLUSTERS {
 	from Bio.Seq import Seq
 	
 	# parse input FASTA
-	with open(animal + "_putative_alleles.fasta", "w") as handle:
+	with open(${animal} + "_putative_alleles.fasta", "w") as handle:
 		for idx, record in enumerate(SeqIO.parse(putative, "fasta")):
 			record.id = str(current_time) + '-' + str(idx)
 			SeqIO.write(record, handle, "fasta")
@@ -733,7 +734,7 @@ process PARSE_IPD_GENBANK {
 	animal_name = name.substring(8,12)
 	
 	"""
-	ipd_to_gdna_cdna.py ${animal_name}
+	ipd_to_gdna_cdna.py ${guide_fasta} ${animal_name}
 	"""
 
 }
@@ -741,7 +742,7 @@ process PARSE_IPD_GENBANK {
 process MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA {
 	
 	// identify putative alleles whose sequences match full-length gDNA sequences already in IPD.
-	// save BAM file of reads that map to known IPD alleles and FASTA.gz file of reads that do not.
+	// save SAM file of reads that map to known IPD alleles and FASTA.gz file of reads that do not.
 	
 	tag "${putative_animal}"
 	
@@ -807,8 +808,6 @@ process FILTER_EXACT_GDNA_MATCHES {
 	names=${putative_animal}_gdna_match.sam \
 	out=${putative_animal}_no-gdna_match.fasta
 	"""
-	
-	
 
 }
 
@@ -855,7 +854,7 @@ process MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE {
 		# map gDNA to cDNA
 		# returning FASTA file of cDNA within 50nt
 		# write gDNA sequence to file
-		with open("${putative_animal}_gdna_single_temp.fasta", "w") as output_handle:
+		with open(${putative_animal} + "_gdna_single_temp.fasta", "w") as output_handle:
 			SeqIO.write(gdna_record, output_handle, "fasta")
 			
 		# create cDNA sequence object from nearby matches
@@ -1128,7 +1127,7 @@ process GENOTYPE_CSS {
 	out=${sample}.sam \
 	ref=${classified} \
 	noheader=t \
-	subfilter=0 \
+	editfilter=0 \
 	threads=1 \
 	ow=t
 	"""
@@ -1147,7 +1146,7 @@ process CREATE_MAMU_GENOTYPING_CSV {
 	
 	script:
 	"""
-	create_genotyping_csv.py "mamu"
+	create_genotyping_csv.py "mamu" ${sam_list}
 	"""
 
 }
@@ -1165,7 +1164,7 @@ process CREATE_MAFA_GENOTYPING_CSV {
 	
 	script:
 	"""
-	create_genotyping_csv.py "mafa"
+	create_genotyping_csv.py "mafa" ${sam_list}
 	"""
 
 }

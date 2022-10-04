@@ -1,12 +1,15 @@
 import os
 import re
 import csv
+import sys
+
+animal = sys.argv[1]
 
 # make list from samples
-sam_files = snakemake.params.per_sample_files.split(",")
+sam_files = str(sys.argv[2])
 
 # create CSV
-with open(snakemake.output[0], 'a') as genotyping_csv:
+with open(str(animal) + "_genotyping.csv", 'a') as genotyping_csv:
 	
 	for i in sam_files:
 		# get sample name

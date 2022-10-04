@@ -7,24 +7,26 @@ import os
 from pathlib import Path
 import sys
 
+animal = sys.argv[1]
+
 # test if there is data in novel.fasta
 # create output files if empty
 
-if os.stat(snakemake.input[1]).st_size == 0:
-	Path(snakemake.output[0]).touch()
-	Path(snakemake.output[1]).touch()
+if os.stat(str(animal) + "_reads.fasta").st_size == 0:
+	Path(str(animal) + "_novel_closest_matches.xlsx").touch()
+	Path(str(animal) + "_distances_tmp.txt").touch()
 	sys.exit()
 
 # import clustal omega distance file
 # remove spaces in sequence identifiers that makes distances.txt file human readable
 
-with open(snakemake.input[0], "rt") as fin:
-	with open(snakemake.output[1], "wt") as fout:
+with open(str(animal) + "_distances.txt", "rt") as fin:
+	with open(str(animal) + "_distances_tmp.txt", "wt") as fout:
 		for line in fin:
 			fout.write(re.sub(' +', ' ', line))
 
 # import into pandas dataframe
-df = pd.read_csv(snakemake.output[1], skiprows=1, header=None, sep=" ", index_col=0)
+df = pd.read_csv(str(animal) + "_distances_tmp.txt", skiprows=1, header=None, sep=" ", index_col=0)
 
 # get row index names
 ordered_values = df.index.values.tolist()
@@ -44,7 +46,7 @@ df.rename(cdna_dict, inplace = True, axis = 1)
 df.replace(0.000000, 1)
 
 # get names of sequences in novel.fasta
-identifiers = [seq_record.id for seq_record in SeqIO.parse(snakemake.input[1], "fasta")]
+identifiers = [seq_record.id for seq_record in SeqIO.parse(str(animal) + "_reads.fasta", "fasta")]
 
 # create subset df with only novel fasta records as rows
 novel_df = df.loc[ identifiers , : ]
@@ -81,4 +83,4 @@ for index, row in top5_df.iterrows():
 	top5_df.at[index, '4'] = top5_df.at[index, '4'] + ' (' + str(novel_df.at[row['0'], row['4']].round(3)) + ')'
 	top5_df.at[index, '5'] = top5_df.at[index, '5'] + ' (' + str(novel_df.at[row['0'], row['5']].round(3)) + ')'
 
-top5_df.to_excel(snakemake.output[0])
+top5_df.to_excel(str(animal) + "_novel_closest_matches.xlsx")

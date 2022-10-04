@@ -1,8 +1,12 @@
+import sys
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
-ipd_seqs = SeqIO.parse(open(snakemake.input[0]),"genbank")
+input_fasta = sys.argv[1]
+animal = sys.argv[2]
+
+ipd_seqs = SeqIO.parse(open(input_fasta),"genbank")
 
 def removeSpecialCharacters(in_str, special_characters='*|: ', replace_character='_'):
     '''remove specified special characters from input str'''
@@ -11,8 +15,8 @@ def removeSpecialCharacters(in_str, special_characters='*|: ', replace_character
     
     return out_str
 
-with open(snakemake.output[0], "w") as gdna_output_handle:
-  with open(snakemake.output[1], "w") as cdna_output_handle:
+with open(str(animal) + "_gdna_reference.fasta", "w") as gdna_output_handle:
+  with open(str(animal) + "_cdna_reference.fasta", "w") as cdna_output_handle:
     for record in ipd_seqs:
       # count number of intron features
       intron_ct = 0
