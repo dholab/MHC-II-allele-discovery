@@ -260,31 +260,31 @@ process ORIENT_FASTQ {
 	if( sample.toLowerCase().contains("dpa") )
 		"""
 		vsearch --orient ${fastq} \
-		--db params.dpa_reference \
+		--db ${params.dpa_reference} \
 		--fastqout ${sample}.fastq
 		"""
 	else if( sample.toLowerCase().contains("dpb") )
 		"""
 		vsearch --orient ${fastq} \
-		--db params.dpb_reference \
+		--db ${params.dpb_reference} \
 		--fastqout ${sample}.fastq
 		"""
 	else if( sample.toLowerCase().contains("dqa") )
 		"""
 		vsearch --orient ${fastq} \
-		--db params.dqa_reference \
+		--db ${params.dqa_reference} \
 		--fastqout ${sample}.fastq
 		"""
 	else if( sample.toLowerCase().contains("dqb") )
 		"""
 		vsearch --orient ${fastq} \
-		--db params.dqb_reference \
+		--db ${params.dqb_reference} \
 		--fastqout ${sample}.fastq
 		"""
 	else if( sample.toLowerCase().contains("drb") )
 		"""
 		vsearch --orient ${fastq} \
-		--db params.drb_reference \
+		--db ${params.drb_reference} \
 		--fastqout ${sample}.fastq
 		"""
 	
@@ -313,75 +313,72 @@ process TRIM_FASTQ {
 		"""
 		bbduk.sh int=f \
 		in=${fastq} \
-		literal=params.dpa_forward_primers \
+		literal=${params.dpa_forward_primers} \
 		restrictleft=50 ktrim=l k=8 qin=33 \
-		minlength=params.dpa_minimum_length \
+		minlength=${params.dpa_minimum_length} \
 		out=stdout.fastq \
 		| bbduk.sh int=f in=stdin.fastq \
-		literal=params.dpa.reverse_primers \
+		literal=${params.dpa.reverse_primers} \
 		restrictright=50 ktrim=r k=8 qin=33 \
-		minlength=params.dpa_minimum_length \
+		minlength=${params.dpa_minimum_length} \
 		out=${sample}.fastq
 		"""
 	else if( sample.toLowerCase().contains("dpb") )
 		"""
 		bbduk.sh int=f \
 		in=${fastq} \
-		literal=params.dpb_forward_primers \
+		literal=${params.dpb_forward_primers} \
 		restrictleft=50 ktrim=l k=8 qin=33 \
-		minlength=params.dpb_minimum_length \
+		minlength=${params.dpb_minimum_length} \
 		out=stdout.fastq \
 		| bbduk.sh int=f in=stdin.fastq \
-		literal=params.dpb.reverse_primers \
+		literal=${params.dpb.reverse_primers} \
 		restrictright=50 ktrim=r k=8 qin=33 \
-		minlength=params.dpb_minimum_length \
+		minlength=${params.dpb_minimum_length} \
 		out=${sample}.fastq
 		"""
 	else if( sample.toLowerCase().contains("dqa") )
 		"""
 		bbduk.sh int=f \
 		in=${fastq} \
-		literal=params.dqa_forward_primers \
+		literal=${params.dqa_forward_primers} \
 		restrictleft=50 ktrim=l k=8 qin=33 \
-		minlength=params.dqa_minimum_length \
+		minlength=${params.dqa_minimum_length} \
 		out=stdout.fastq \
 		| bbduk.sh int=f in=stdin.fastq \
-		literal=params.dqa.reverse_primers \
+		literal=${params.dqa.reverse_primers} \
 		restrictright=50 ktrim=r k=8 qin=33 \
-		minlength=params.dqa_minimum_length \
+		minlength=${params.dqa_minimum_length} \
 		out=${sample}.fastq
 		"""
 	else if( sample.toLowerCase().contains("dqb") )
 		"""
 		bbduk.sh int=f \
 		in=${fastq} \
-		literal=params.dqb_forward_primers \
+		literal=${params.dqb_forward_primers} \
 		restrictleft=50 ktrim=l k=8 qin=33 \
-		minlength=params.dqb_minimum_length \
+		minlength=${params.dqb_minimum_length} \
 		out=stdout.fastq \
 		| bbduk.sh int=f in=stdin.fastq \
-		literal=params.dqb.reverse_primers \
+		literal=${params.dqb.reverse_primers} \
 		restrictright=50 ktrim=r k=8 qin=33 \
-		minlength=params.dqb_minimum_length \
+		minlength=${params.dqb_minimum_length} \
 		out=${sample}.fastq
 		"""
 	else if( sample.toLowerCase().contains("drb") )
 		"""
 		bbduk.sh int=f \
 		in=${fastq} \
-		literal=params.drb_forward_primers \
+		literal=${params.drb_forward_primers} \
 		restrictleft=50 ktrim=l k=8 qin=33 \
-		minlength=params.drb_minimum_length \
+		minlength=${params.drb_minimum_length} \
 		out=stdout.fastq \
 		| bbduk.sh int=f in=stdin.fastq \
-		literal=params.drb.reverse_primers \
+		literal=${params.drb.reverse_primers} \
 		restrictright=50 ktrim=r k=8 qin=33 \
-		minlength=params.drb_minimum_length \
+		minlength=${params.drb_minimum_length} \
 		out=${sample}.fastq
 		"""
-	
-	
-
 }
 
 process INDEX_FASTQ {
