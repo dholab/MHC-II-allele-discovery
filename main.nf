@@ -381,7 +381,7 @@ process RUN_PBAA {
 	// suppress stderr so you can see which samples fail
 	
 	tag "${sample}"
-	publishDir params.pbaa_clusters, pattern: "*_passed_cluster_sequences.fasta", mode: 'copy'
+	publishDir params.pbaa_clusters, pattern: "*.fasta", mode: 'copy'
 	
 	cpus 2
 	
@@ -645,7 +645,7 @@ process PARSE_IPD_GENBANK {
 	// use biopython to take IPD Genbank file and separate into FASTA
 	// of genomic DNA (intron containing) sequences and cDNA sequences (no intron)
 	
-	tag "${animal}"
+	tag "${animal_name}"
 	publishDir params.ipd_ref_sep, mode: 'copy'
 	
 	cpus 1
@@ -658,7 +658,7 @@ process PARSE_IPD_GENBANK {
 	tuple path("*cdna_reference.fasta"), val(animal_name), emit: cdna
 	
 	script:
-	animal_name = name.substring(8,12)
+	animal_name = guide_fasta.simpleName.substring(8,12)
 	
 	"""
 	ipd_to_gdna_cdna.py ${guide_fasta} ${animal_name}

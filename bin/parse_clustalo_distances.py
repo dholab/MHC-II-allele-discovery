@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import pandas as pd 
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord

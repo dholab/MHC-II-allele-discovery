@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 def removeSpecialCharacters(in_str, special_characters='*|: ', replace_character='_'):
 	'''remove specified special characters from input str'''
 	

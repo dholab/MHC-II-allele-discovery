@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import csv
 import utils
 from Bio import SeqIO
