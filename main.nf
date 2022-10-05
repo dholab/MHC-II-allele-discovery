@@ -12,10 +12,7 @@ workflow {
 	ch_sample_manifest = Channel
 		.fromPath( params.sample_manifest )
 		.splitCsv( header: ['bam', 'sample', 'animal'] )
-		.map { row -> tuple( "${params.bam_folder}/${row.bam}", row.sample, row.animal )}
-	
-	ch_pbaa_guides = Channel
-		.fromPath( params.pbaa_guides )
+		.map { row -> tuple( "${params.bam_folder}/${row.bam}", row.sample, row.animal ) }
 	
 	ch_ipd_ref = Channel
 		.fromPath( params.ipd_refs )
@@ -33,27 +30,13 @@ workflow {
 		ORIENT_FASTQ.out
 	)
 	
-	INDEX_FASTQ (
-		TRIM_FASTQ.out
-	)
-	
-	INDEX_GUIDE_FASTA (
-		ch_pbaa_guides
-	)
-	
 	RUN_PBAA (
-		INDEX_FASTQ.out.fastq,
-		INDEX_FASTQ.out.index,
-		ch_pbaa_guides.collect(),
-		INDEX_GUIDE_FASTA.out.collect()
-	)
-	
-	RENAME_FOR_LAA (
-		RUN_PBAA.out
+		TRIM_FASTQ.out.fastq,
+		TRIM_FASTQ.out.index
 	)
 	
 	CLUSTER_PER_SAMPLE (
-		RENAME_FOR_LAA.out
+		RUN_PBAA.out
 	)
 	
 	RENAME_CLUSTERS (
@@ -306,124 +289,90 @@ process TRIM_FASTQ {
 	tuple path(fastq), val(sample), val(animal)
 	
 	output:
-	tuple path("*.fastq"), val(sample), val(animal)
+	tuple path("*.fastq"), val(sample), val(animal), emit: fastq
+	path("*.fai"), emit: index
 	
 	script:
 	if( sample.toLowerCase().contains("dpa") )
 		"""
-		bbduk.sh int=f \
+		bbduk.sh -Xmx1g \
+		int=f \
 		in=${fastq} \
 		literal=${params.dpa_forward_primers} \
 		restrictleft=50 ktrim=l k=8 qin=33 \
 		minlength=${params.dpa_minimum_length} \
 		out=stdout.fastq \
 		| bbduk.sh int=f in=stdin.fastq \
-		literal=${params.dpa.reverse_primers} \
+		literal=${params.dpa_reverse_primers} \
 		restrictright=50 ktrim=r k=8 qin=33 \
 		minlength=${params.dpa_minimum_length} \
-		out=${sample}.fastq
+		out=${sample}_trimmed.fastq && \
+		samtools fqidx ${sample}_trimmed.fastq
 		"""
 	else if( sample.toLowerCase().contains("dpb") )
 		"""
-		bbduk.sh int=f \
+		bbduk.sh -Xmx1g \
+		int=f \
 		in=${fastq} \
 		literal=${params.dpb_forward_primers} \
 		restrictleft=50 ktrim=l k=8 qin=33 \
 		minlength=${params.dpb_minimum_length} \
 		out=stdout.fastq \
 		| bbduk.sh int=f in=stdin.fastq \
-		literal=${params.dpb.reverse_primers} \
+		literal=${params.dpb_reverse_primers} \
 		restrictright=50 ktrim=r k=8 qin=33 \
 		minlength=${params.dpb_minimum_length} \
-		out=${sample}.fastq
+		out=${sample}_trimmed.fastq && \
+		samtools fqidx ${sample}_trimmed.fastq
 		"""
 	else if( sample.toLowerCase().contains("dqa") )
 		"""
-		bbduk.sh int=f \
+		bbduk.sh  -Xmx1g \
+		int=f \
 		in=${fastq} \
 		literal=${params.dqa_forward_primers} \
 		restrictleft=50 ktrim=l k=8 qin=33 \
 		minlength=${params.dqa_minimum_length} \
 		out=stdout.fastq \
 		| bbduk.sh int=f in=stdin.fastq \
-		literal=${params.dqa.reverse_primers} \
+		literal=${params.dqa_reverse_primers} \
 		restrictright=50 ktrim=r k=8 qin=33 \
 		minlength=${params.dqa_minimum_length} \
-		out=${sample}.fastq
+		out=${sample}_trimmed.fastq && \
+		samtools fqidx ${sample}_trimmed.fastq
 		"""
 	else if( sample.toLowerCase().contains("dqb") )
 		"""
-		bbduk.sh int=f \
+		bbduk.sh  -Xmx1g \
+		int=f \
 		in=${fastq} \
 		literal=${params.dqb_forward_primers} \
 		restrictleft=50 ktrim=l k=8 qin=33 \
 		minlength=${params.dqb_minimum_length} \
 		out=stdout.fastq \
 		| bbduk.sh int=f in=stdin.fastq \
-		literal=${params.dqb.reverse_primers} \
+		literal=${params.dqb_reverse_primers} \
 		restrictright=50 ktrim=r k=8 qin=33 \
 		minlength=${params.dqb_minimum_length} \
-		out=${sample}.fastq
+		out=${sample}_trimmed.fastq && \
+		samtools fqidx ${sample}_trimmed.fastq
 		"""
 	else if( sample.toLowerCase().contains("drb") )
 		"""
-		bbduk.sh int=f \
+		bbduk.sh -Xmx1g \
+		int=f \
 		in=${fastq} \
 		literal=${params.drb_forward_primers} \
 		restrictleft=50 ktrim=l k=8 qin=33 \
 		minlength=${params.drb_minimum_length} \
 		out=stdout.fastq \
 		| bbduk.sh int=f in=stdin.fastq \
-		literal=${params.drb.reverse_primers} \
+		literal=${params.drb_reverse_primers} \
 		restrictright=50 ktrim=r k=8 qin=33 \
 		minlength=${params.drb_minimum_length} \
-		out=${sample}.fastq
+		out=${sample}_trimmed.fastq && \
+		samtools fqidx ${sample}_trimmed.fastq
 		"""
-}
-
-process INDEX_FASTQ {
-	
-	// make index from each FASTQ file
-	// indexing is necessary for pbaa
-	
-	tag "${sample}"
-	// publishDir params.trimmed_fastq, pattern: "*.fai" pattern mode: 'copy'
-	
-	cpus 1
-	
-	input:
-	tuple path(fastq), val(sample), val(animal)
-	
-	output:
-	tuple path("*_trimmed.fastq"), val(sample), val(animal), emit: fastq
-	path("*.fai"), emit: index
-	
-	script:
-	"""
-	mv ${fastq} ${sample}_trimmed.fastq
-	samtools faidx ${sample}_trimmed.fastq.fai
-	"""
-
-}
-
-process INDEX_GUIDE_FASTA {
-	
-	// make index from each potential guide FASTA file
-	// indexing is necessary for pbaa
-	
-	punlishDir params.pbaa_resources, pattern: "*.fasta.fai", mode: 'copy'
-	
-	input:
-	path(guide_fasta)
-	
-	output:
-	path("*.fasta.fai")
-	
-	script:
-	"""
-	samtools faidx ${guide_fasta}
-	"""
-
 }
 
 process RUN_PBAA {
@@ -434,93 +383,76 @@ process RUN_PBAA {
 	tag "${sample}"
 	publishDir params.pbaa_clusters, pattern: "*_passed_cluster_sequences.fasta", mode: 'copy'
 	
-	cpus 1
+	cpus 2
 	
 	input:
 	tuple path(fastq), val(sample), val(animal)
 	path(index)
-	each path(guide_fastas)
-	each path(guide_fasta_indices)
 	
 	output:
-	path("*_passed_cluster_sequences.fasta"), val(sample), val(animal)
+	tuple path("*.fasta"), val(sample), val(animal)
 	
 	script:
 	if( sample.toLowerCase().contains("dpa") )
 		"""
-		pbaa cluster \
+		samtools faidx ${params.dpa_guide_fasta} && \
+		/miniconda2/bin/pbaa cluster \
 		--min-read-qv 30 \
 		--max-reads-per-guide 1000 \
 		--max-alignments-per-read 2000 \
 		--num-threads ${task.cpus} \
-		"MW679627.fasta" \
+		${params.dpa_guide_fasta} \
 		${fastq} \
 		"${sample}_DPA" 2> /dev/null
 		"""
 	else if( sample.toLowerCase().contains("dpb") )
 		"""
-		pbaa cluster \
+		samtools faidx ${params.dpb_guide_fasta} && \
+		/miniconda2/bin/pbaa cluster \
 		--min-read-qv 30 \
 		--max-reads-per-guide 1000 \
 		--max-alignments-per-read 2000 \
 		--num-threads ${task.cpus} \
-		"MW679628.fasta" \
+		${params.dpb_guide_fasta} \
 		${fastq} \
 		"${sample}_DPB" 2> /dev/null
 		"""
 	else if( sample.toLowerCase().contains("dqa") )
 		"""
-		pbaa cluster \
+		samtools faidx ${params.dqa_guide_fasta} && \
+		/miniconda2/bin/pbaa cluster \
 		--min-read-qv 30 \
 		--max-reads-per-guide 1000 \
 		--max-alignments-per-read 2000 \
 		--num-threads ${task.cpus} \
-		"MW679620.fasta" \
+		${params.dqa_guide_fasta} \
 		${fastq} \
 		"${sample}_DQA" 2> /dev/null
 		"""
 	else if( sample.toLowerCase().contains("dqb") )
 		"""
-		pbaa cluster \
+		samtools faidx ${params.dqb_guide_fasta} && \
+		/miniconda2/bin/pbaa cluster \
 		--min-read-qv 30 \
 		--max-reads-per-guide 1000 \
 		--max-alignments-per-read 2000 \
 		--num-threads ${task.cpus} \
-		"MW679622.fasta" \
+		${params.dqb_guide_fasta} \
 		${fastq} \
 		"${sample}_DQB" 2> /dev/null
 		"""
 	else if( sample.toLowerCase().contains("drb") )
 		"""
-		pbaa cluster \
+		samtools faidx ${params.drb_guide_fasta} && \
+		/miniconda2/bin/pbaa cluster \
 		--min-read-qv 30 \
 		--max-reads-per-guide 1000 \
 		--max-alignments-per-read 2000 \
 		--num-threads ${task.cpus} \
-		"cy0333-drb.fasta" \
+		${params.drb_guide_fasta} \
 		${fastq} \
 		"${sample}_DRB" 2> /dev/null
 		"""
-
-}
-
-process RENAME_FOR_LAA {
-	
-	// pbaa adds extraneous sequence to the output fasta
-	// rename to remove
-	
-	tag "${sample}"
-	
-	input:
-	path(pbaa_cluster), val(sample), val(animal)
-	
-	output:
-	path("*.fasta"), val(sample), val(animal)
-	
-	script:
-	"""
-	mv ${pbaa_cluster} ${sample}.fasta
-	"""
 
 }
 
@@ -540,17 +472,17 @@ process CLUSTER_PER_SAMPLE {
 	cpus 1
 	
 	input:
-	path(fasta), val(sample), val(animal)
+	tuple path(fasta), val(sample), val(animal)
 	
 	output:
-	path("*.fasta.gz"), val(sample), val(animal)
+	tuple path("*_clustered.fasta.gz"), val(sample), val(animal)
 	
 	script:
 	"""
-	gzip < /dev/null > ${sample}.fasta.gz && \
+	gzip < /dev/null > ${sample}.fasta.gz
 	dedupe.sh -Xmx1g ow=t \
-	in=${sample}.fasta.gz \
-	outbest=${sample}.fasta.gz \
+	in=${fasta} \
+	outbest=${sample}_clustered.fasta.gz \
 	fo c \
 	threads=${task.cpus}
 	"""
@@ -564,10 +496,10 @@ process RENAME_CLUSTERS {
 	tag "${sample}"
 	
 	input:
-	path(fasta), val(sample), val(animal)
+	tuple path(fasta), val(sample), val(animal)
 	
 	output:
-	path("*.fasta.gz"), val(sample), val(animal)
+	tuple path("*.fasta.gz"), val(sample), val(animal)
 	
 	script:
 	"""
