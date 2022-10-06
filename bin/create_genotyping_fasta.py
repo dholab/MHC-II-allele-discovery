@@ -10,6 +10,7 @@ import os
 import sys
 
 animal = sys.argv[1]
+reference = sys.argv[2]
 
 # create dictionary of classifications
 classified = {}
@@ -30,7 +31,7 @@ if os.stat(str(animal) + "_novel_closest_matches.xlsx").st_size > 0:
 # create renamed FASTA file with updated names for genotyping
 with open(str(animal) + "_classified.fasta", "a") as handle:
 	# add IPD gDNA sequences
-	with open(str(animal) + "_gdna_reference.fasta", "r") as input_handle:
+	with open(reference, "r") as input_handle:
 		sequences = SeqIO.parse(input_handle, "fasta")
 		SeqIO.write(sequences, handle, "fasta")
 	

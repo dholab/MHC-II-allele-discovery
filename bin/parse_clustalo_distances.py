@@ -14,7 +14,7 @@ animal = sys.argv[1]
 # test if there is data in novel.fasta
 # create output files if empty
 
-if os.stat(str(animal) + "_reads.fasta").st_size == 0:
+if os.stat(str(animal) + "_novel.fasta").st_size == 0:
 	Path(str(animal) + "_novel_closest_matches.xlsx").touch()
 	Path(str(animal) + "_distances_tmp.txt").touch()
 	sys.exit()

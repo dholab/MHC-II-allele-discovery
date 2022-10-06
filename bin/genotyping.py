@@ -6,7 +6,7 @@ import sys
 animal = sys.argv[1]
 
 # import csv
-df = pd.read_csv(str(animal) + "_genotyping.csv"], sep=',', names=['animal', 'genotype'])
+df = pd.read_csv(str(animal) + "_genotyping.csv", sep=',', names=['animal', 'genotype'])
 
 # add column to hold counts
 df['ct'] = 1
@@ -19,4 +19,4 @@ df_pivoted= pd.pivot_table(df_grouped, index=['genotype'], columns=['animal'], v
 
 # export to Excel
 # has index column that should be deleted to avoid confusing numbering
-df_pivoted.to_excel(snakemake.output[0])
+df_pivoted.to_excel(animal + "_genotyping.xlsx")

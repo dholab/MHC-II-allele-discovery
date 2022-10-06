@@ -8,7 +8,7 @@ import sys
 animal = sys.argv[1]
 
 # make list from samples
-sam_files = str(sys.argv[2])
+sam_files = str(sys.argv[2]).split(",")
 
 # create CSV
 with open(str(animal) + "_genotyping.csv", 'a') as genotyping_csv:
