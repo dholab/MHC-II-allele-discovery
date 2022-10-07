@@ -18,10 +18,6 @@ workflow {
 		.fromPath( params.ipd_refs )
 	
 	// Workflow steps
-	CHECK_FILES (
-		ch_sample_manifest
-	)
-	
 	CONVERT_BAM_TO_FASTQ (
 		ch_sample_manifest
 	)
@@ -202,27 +198,6 @@ params.ipd_refs = params.classify_resources + "/" + "*.gbk"
 // PROCESS SPECIFICATION 
 // --------------------------------------------------------------- //
 
-process CHECK_FILES {
-	
-	// This block makes sure that all the files specified in the sample sheet
-	// are actually present in the data folder.
-	
-	tag "${sample}"
-	
-	input:
-	tuple path(bam), val(sample), val(animal)
-		
-	script:
-	basename = bam.getName()
-	if( bam.empty() )
-		error "The file ${basename} is not present in ${params.bam_folder}"
-	else
-		"""
-		echo "The file ${basename} is present in ${params.bam_folder}"
-		"""
-	
-}
-	
 process CONVERT_BAM_TO_FASTQ {
 	
 	// Demultiplexed PacBio CCS reads are provided as unmapped BAM files
@@ -242,9 +217,13 @@ process CONVERT_BAM_TO_FASTQ {
 	tuple path("*.fastq.gz"), val(sample), val(animal)
 	
 	script:
-	"""
-	samtools bam2fq ${bam} | gzip > ${sample}.fastq.gz
-	"""
+	basename = bam.getName()
+	if( bam.empty() )
+		error "The file ${basename} is not present in ${params.bam_folder}"
+	else
+		"""
+		samtools bam2fq ${bam} | gzip > ${sample}.fastq.gz
+		"""
 
 }
 
@@ -352,7 +331,7 @@ process TRIM_FASTQ {
 		"""
 	else if( sample.toLowerCase().contains("dqa") )
 		"""
-		bbduk.sh  -Xmx1g \
+		bbduk.sh -Xmx1g \
 		int=f \
 		in=${fastq} \
 		literal=${params.dqa_forward_primers} \
@@ -368,7 +347,7 @@ process TRIM_FASTQ {
 		"""
 	else if( sample.toLowerCase().contains("dqb") )
 		"""
-		bbduk.sh  -Xmx1g \
+		bbduk.sh -Xmx1g \
 		int=f \
 		in=${fastq} \
 		literal=${params.dqb_forward_primers} \
