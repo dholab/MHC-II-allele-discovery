@@ -18,6 +18,10 @@ workflow {
 		.fromPath( params.ipd_refs )
 	
 	// Workflow steps
+	CHECK_FILES (
+		ch_sample_manifest
+	)
+	
 	CONVERT_BAM_TO_FASTQ (
 		ch_sample_manifest
 	)
@@ -197,6 +201,27 @@ params.ipd_refs = params.classify_resources + "/" + "*.gbk"
 
 // PROCESS SPECIFICATION 
 // --------------------------------------------------------------- //
+
+process CHECK_FILES {
+	
+	// This block makes sure that all the files specified in the sample sheet
+	// are actually present in the data folder.
+	
+	tag "${sample}"
+	
+	input:
+	tuple path(bam), val(sample), val(animal)
+		
+	script:
+	basename = bam.getName()
+	if( bam.empty() )
+		error "The file ${basename} is not present in ${params.bam_folder}"
+	else
+		"""
+		echo "The file ${basename} is present in ${params.bam_folder}"
+		"""
+	
+}
 	
 process CONVERT_BAM_TO_FASTQ {
 	
@@ -302,7 +327,7 @@ process TRIM_FASTQ {
 		restrictleft=50 ktrim=l k=8 qin=33 \
 		minlength=${params.dpa_minimum_length} \
 		out=stdout.fastq \
-		| bbduk.sh int=f in=stdin.fastq \
+		| bbduk.sh -Xmx1g int=f in=stdin.fastq \
 		literal=${params.dpa_reverse_primers} \
 		restrictright=50 ktrim=r k=8 qin=33 \
 		minlength=${params.dpa_minimum_length} \
@@ -318,7 +343,7 @@ process TRIM_FASTQ {
 		restrictleft=50 ktrim=l k=8 qin=33 \
 		minlength=${params.dpb_minimum_length} \
 		out=stdout.fastq \
-		| bbduk.sh int=f in=stdin.fastq \
+		| bbduk.sh -Xmx1g int=f in=stdin.fastq \
 		literal=${params.dpb_reverse_primers} \
 		restrictright=50 ktrim=r k=8 qin=33 \
 		minlength=${params.dpb_minimum_length} \
@@ -334,7 +359,7 @@ process TRIM_FASTQ {
 		restrictleft=50 ktrim=l k=8 qin=33 \
 		minlength=${params.dqa_minimum_length} \
 		out=stdout.fastq \
-		| bbduk.sh int=f in=stdin.fastq \
+		| bbduk.sh -Xmx1g int=f in=stdin.fastq \
 		literal=${params.dqa_reverse_primers} \
 		restrictright=50 ktrim=r k=8 qin=33 \
 		minlength=${params.dqa_minimum_length} \
