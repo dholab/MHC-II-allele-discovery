@@ -209,6 +209,8 @@ process CONVERT_BAM_TO_FASTQ {
 	publishDir params.raw_fastqs, mode: 'copy'
 	
 	cpus 1
+	errorStrategy 'retry'
+	maxRetries 4
 	
 	input:
 	tuple path(bam), val(sample), val(animal)
@@ -235,6 +237,8 @@ process ORIENT_FASTQ {
 	publishDir params.orient_fastq, mode: 'symlink'
 	
 	cpus 1
+	errorStrategy 'retry'
+	maxRetries 4
 	
 	input:
 	tuple path(fastq), val(sample), val(animal)
@@ -288,6 +292,8 @@ process TRIM_FASTQ {
 	
 	cpus 1
 	memory '2.5 GB'
+	errorStrategy 'retry'
+	maxRetries 4
 	
 	input:
 	tuple path(fastq), val(sample), val(animal)
@@ -388,6 +394,8 @@ process RUN_PBAA {
 	publishDir params.pbaa_clusters, pattern: "*_passed_cluster_sequences.fasta", mode: 'copy'
 	
 	cpus 2
+	errorStrategy 'retry'
+	maxRetries 4
 	
 	input:
 	tuple path(fastq), val(sample), val(animal)
@@ -479,6 +487,8 @@ process CLUSTER_PER_SAMPLE {
 	publishDir params.sample_clusters, mode: 'symlink'
 	
 	cpus 1
+	errorStrategy 'retry'
+	maxRetries 4
 	
 	input:
 	tuple path(fasta), val(sample), val(animal)
@@ -504,6 +514,9 @@ process RENAME_CLUSTERS {
 	
 	tag "${sample}"
 	
+	errorStrategy 'retry'
+	maxRetries 4
+	
 	input:
 	tuple path(fasta), val(sample), val(animal)
 	
@@ -528,6 +541,9 @@ process MERGE_PER_MAMU_CLUSTERS {
 	
 	publishDir params.merged_clusters, mode: 'copy'
 	
+	errorStrategy 'retry'
+	maxRetries 4
+	
 	input:
 	path(mamu_list)
 	
@@ -546,6 +562,9 @@ process MERGE_PER_MAFA_CLUSTERS {
 	// gymnastics with per-sample merged FASTA to merge mafa samples after all have been created - need to wait until rename_clusters completes before running this step
 	
 	publishDir params.merged_clusters, mode: 'copy'
+	
+	errorStrategy 'retry'
+	maxRetries 4
 	
 	input:
 	path(mafa_list)
@@ -578,6 +597,8 @@ process SHARED_ANIMALS {
 	publishDir params.shared_clusters, mode: 'copy'
 	
 	cpus 1
+	errorStrategy 'retry'
+	maxRetries 4
 	
 	input:
 	tuple path(fasta), val(animal)
@@ -624,6 +645,9 @@ process RENAME_PUTATIVE_ALLELE_CLUSTERS {
 	tag "${animal}"
 	publishDir params.shared_clusters, mode: 'copy'
 	
+	errorStrategy 'retry'
+	maxRetries 4
+	
 	input:
 	tuple path(putative), val(animal)
 	
@@ -658,6 +682,8 @@ process PARSE_IPD_GENBANK {
 	publishDir params.ipd_ref_sep, mode: 'copy'
 	
 	cpus 1
+	errorStrategy 'retry'
+	maxRetries 4
 	
 	input:
 	path(guide_fasta)
@@ -683,6 +709,8 @@ process MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA {
 	tag "${putative_animal}"
 	
 	cpus 1
+	errorStrategy 'retry'
+	maxRetries 4
 	
 	when:
 	putative_animal == gdna.simpleName.substring(0,4)
@@ -717,6 +745,8 @@ process FILTER_EXACT_GDNA_MATCHES {
 	publishDir params.cdna_identical, pattern: '*no-gdna_match.fasta', mode: 'copy'
 	
 	cpus 1
+	errorStrategy 'retry'
+	maxRetries 4
 	
 	when:
 	putative_animal == fasta_animal && putative_animal == gdna.simpleName.substring(0,4)
@@ -763,6 +793,9 @@ process MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE {
 	publishDir params.cdna_identical, pattern: '*merged.aln', mode: 'copy'
 	publishDir params.cdna_identical, pattern: '*gdna_single_temp.fasta', mode: 'copy'
 	
+	errorStrategy 'retry'
+	maxRetries 4
+	
 	when:
 	putative_animal == cdna.simpleName.substring(0,4)
 	
@@ -788,6 +821,9 @@ process FIND_MUSCLE_CDNA_GDNA_MATCHES {
 	tag "${putative_animal}"
 	publishDir params.cdna_identical, mode: 'copy'
 	
+	errorStrategy 'retry'
+	maxRetries 4
+	
 	input:
 	tuple path(merged), val(putative_animal)
 	
@@ -809,6 +845,9 @@ process RENAME_MUSCLE_CDNA_MATCHES_FASTA {
 	
 	tag "${gdna_animal}"
 	publishDir params.cdna_identical, mode: 'copy'
+	
+	errorStrategy 'retry'
+	maxRetries 4
 	
 	when:
 	cdna_animal == gdna_animal
@@ -864,6 +903,9 @@ process EXTRACT_NOVEL_SEQUENCES {
 	tag "${cdna_animal}"
 	publishDir params.novel_alleles, mode: 'copy'
 	
+	errorStrategy 'retry'
+	maxRetries 4
+	
 	when:
 	no_gdna_animal == cdna_animal
 	
@@ -892,6 +934,9 @@ process MERGE_READS {
 	
 	tag "${novel_animal}"
 	
+	errorStrategy 'retry'
+	maxRetries 4
+	
 	when:
 	novel_animal == cdna_match_animal && novel_animal == gdna_ref.simpleName.substring(0,4)
 	
@@ -918,6 +963,9 @@ process CLUSTAL_ALIGN {
 	
 	tag "${novel_animal}"
 	publishDir params.novel_alleles, pattern: '*distance.txt', mode: 'copy'
+	
+	errorStrategy 'retry'
+	maxRetries 4
 	
 	when:
 	reads_animal == novel_animal
@@ -948,6 +996,9 @@ process PARSE_DISTANCES {
 	
 	tag "${clustal_animal}"
 	
+	errorStrategy 'retry'
+	maxRetries 4
+	
 	when:
 	clustal_animal == novel_animal && clustal_animal == match_animal
 	
@@ -977,6 +1028,9 @@ process CREATE_GENOTYPING_FASTA {
 	tag "${putative_animal}"
 	publishDir params.genotyping, pattern: 'classified.fasta', mode: 'copy'
 	publishDir params.putative_new, pattern: '*putative.fasta', mode: 'copy'
+	
+	errorStrategy 'retry'
+	maxRetries 4
 	
 	when:
 	putative_animal == gdna_ref.simpleName.substring(0,4) && putative_animal == match_animal && putative_animal == closest_animal
@@ -1011,6 +1065,8 @@ process GENOTYPE_CSS {
 	animal == classified.simpleName.substring(0,4)
 	
 	cpus = 1
+	errorStrategy 'retry'
+	maxRetries 4
 	
 	input:
 	tuple path(fastq), val(sample), val(animal)
@@ -1041,6 +1097,9 @@ process CREATE_MAMU_GENOTYPING_CSV {
 	
 	// create CSV file containing sample name, allele name, and count of reads matching allele
 	
+	errorStrategy 'retry'
+	maxRetries 4
+	
 	input:
 	path(sam_list)
 	
@@ -1061,7 +1120,10 @@ process CREATE_MAMU_GENOTYPING_CSV {
 process CREATE_MAFA_GENOTYPING_CSV {
 	
 	// create CSV file containing sample name, allele name, and count of reads matching allele
-	
+
+	errorStrategy 'retry'
+	maxRetries 4
+		
 	input:
 	path(sam_list)
 	
@@ -1081,6 +1143,9 @@ process CREATE_MAFA_GENOTYPING_CSV {
 process CREATE_GENOTYPING_PIVOT {
 	
 	// make Excel-formatted pivot table from genotyping CSV
+	
+	errorStrategy 'retry'
+	maxRetries 4
 	
 	tag "${animal}"
 	publishDir params.genotyping, mode: 'move'
@@ -1112,6 +1177,8 @@ process PRELIMINARY_EXONERATE_PUTATIVE {
 	// 27319 - create annotations from FASTA file as named in genotyping file
 	
 	tag "${animal}"
+	errorStrategy 'retry'
+	maxRetries 4
 	
 	input:
 	tuple path(fasta), val(animal)
@@ -1180,6 +1247,9 @@ process PRELIMINARY_EXONERATE_PROCESS_GFF_PUTATIVE {
 	
 	tag "${animal}"
 	
+	errorStrategy 'retry'
+	maxRetries 4
+	
 	input:
 	tuple path(gff), val(animal)
 	
@@ -1207,6 +1277,9 @@ process PRELIMINARY_EXONERATE_MERGE_CDS_PUTATIVE {
 	
 	tag "${animal}"
 	publishDir params.putative_new, mode: 'move'
+	
+	errorStrategy 'retry'
+	maxRetries 4
 	
 	input:
 	tuple path(gff), val(animal)
