@@ -283,7 +283,7 @@ process TRIM_FASTQ {
 	publishDir params.trimmed_fastq, mode: 'symlink'
 	
 	cpus 1
-	memory 2.GB
+	memory '2.5 GB'
 	
 	input:
 	tuple path(fastq), val(sample), val(animal)

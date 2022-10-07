@@ -3,6 +3,7 @@ data/
 .nextflow/
 results/
 
+bin/__pycache__/
 .DS_Store
 .Rhistory
 .nextflow.log*
