@@ -234,7 +234,7 @@ process ORIENT_FASTQ {
 	// use vsearch orient command to ensure reads are all in the same orientation
 	
 	tag "${sample}"
-	publishDir params.orient_fastq, mode: 'symlink'
+	publishDir params.orient_fastq, mode: 'copy'
 	
 	cpus 1
 	errorStrategy 'retry'
@@ -288,7 +288,7 @@ process TRIM_FASTQ {
 	// since sequences are oriented, only need to trim ends in one orientation
 	
 	tag "${sample}"
-	publishDir params.trimmed_fastq, mode: 'symlink'
+	publishDir params.trimmed_fastq, mode: 'copy'
 	
 	cpus 1
 	memory '2.5 GB'
@@ -393,7 +393,6 @@ process RUN_PBAA {
 	tag "${sample}"
 	publishDir params.pbaa_clusters, pattern: "*_passed_cluster_sequences.fasta", mode: 'copy'
 	
-	cpus 2
 	errorStrategy 'retry'
 	maxRetries 4
 	
@@ -484,7 +483,7 @@ process CLUSTER_PER_SAMPLE {
 	// Some samples might not have output. Create empty output file and overwrite if data exists.
 	
 	tag "${sample}"
-	publishDir params.sample_clusters, mode: 'symlink'
+	publishDir params.sample_clusters, mode: 'copy'
 	
 	cpus 1
 	errorStrategy 'retry'
@@ -1059,7 +1058,7 @@ process GENOTYPE_CSS {
 	// use higher minratio and smaller maxindel per emails with Brian Bushnell
 	
 	tag "${sample}"
-	publishDir params.genotyping, pattern: '*.sam', mode: 'symlink'
+	publishDir params.genotyping, pattern: '*.sam', mode: 'copy'
 	
 	when:
 	animal == classified.simpleName.substring(0,4)
@@ -1108,7 +1107,6 @@ process CREATE_MAMU_GENOTYPING_CSV {
 	
 	script:
 	sam_string = sam_list.join(",")
-	println sam_string
 	
 	"""
 	create_genotyping_csv.py "mamu" ${sam_string}
