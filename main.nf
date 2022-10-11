@@ -79,7 +79,8 @@ workflow {
 	
 	FILTER_EXACT_GDNA_MATCHES (
 		MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA.out,
-		RENAME_PUTATIVE_ALLELE_CLUSTERS.out,
+		RENAME_PUTATIVE_ALLELE_CLUSTERS.out
+			.map { fasta, animal -> fasta },
 		PARSE_IPD_GENBANK.out.gdna
 	)
 	
@@ -120,9 +121,11 @@ workflow {
 	)
 	
 	CREATE_GENOTYPING_FASTA (
-		RENAME_PUTATIVE_ALLELE_CLUSTERS.out,
+		RENAME_PUTATIVE_ALLELE_CLUSTERS.out
+			.map { clusters, animal -> clusters },
 		PARSE_IPD_GENBANK.out.gdna,
-		FIND_MUSCLE_CDNA_GDNA_MATCHES.out,
+		FIND_MUSCLE_CDNA_GDNA_MATCHES.out
+			.map { matches, animal -> matches },
 		PARSE_DISTANCES.out.closest_matches
 	)
 	
@@ -749,11 +752,11 @@ process FILTER_EXACT_GDNA_MATCHES {
 	maxRetries 4
 	
 	when:
-	putative_animal == fasta_animal && putative_animal && putative_animal == gdna.simpleName.substring(0,4)
+	putative_animal == fasta.simpleName.substring(0,4) && putative_animal == gdna.simpleName.substring(0,4)
 	
 	input:
 	tuple path(sam), val(putative_animal)
-	tuple path(fasta), val(fasta_animal)
+	each fasta
 	each gdna
 	
 	output:
@@ -851,16 +854,17 @@ process RENAME_MUSCLE_CDNA_MATCHES_FASTA {
 	maxRetries 4
 	
 	when:
-	cdna_animal == gdna_animal
+	cdna_matches.simpleName.substring(0,4) == gdna_animal
 	
 	input:
-	tuple path(cdna_matches), val(cdna_animal)
+	each cdna_matches
 	tuple path(matches_aln), val(gdna_animal)
 	
 	output:
 	tuple path("*cdna_matches.fasta"), val(cdna_animal)
 	
 	script:
+	cdna_animal = cdna_matches.simpleName.substring(0,4)
 	"""
 	#!/usr/bin/env python3
 	
@@ -908,16 +912,18 @@ process EXTRACT_NOVEL_SEQUENCES {
 	maxRetries 4
 	
 	when:
-	no_gdna_animal == cdna_animal
+	no_gdna_match.simpleName.substring(0,4) == cdna_animal
 	
 	input:
-	tuple path(no_gdna_match), val(no_gdna_animal)
+	each no_gdna_match
 	tuple path(cdna_matches), val(cdna_animal)
 	
 	output:
 	tuple path("*novel.fasta"), val(cdna_animal)
 	
 	script:
+	no_gdna_animal = no_gdna_match.simpleName.substring(0,4)
+	
 	if( file(cdna_matches).isEmpty() )
 		"""
 		touch ${no_gdna_animal}_novel.fasta
@@ -939,15 +945,15 @@ process MERGE_READS {
 	maxRetries 4
 	
 	when:
-	novel_animal == cdna_match_animal && novel_animal == gdna_ref.simpleName.substring(0,4)
+	novel_animal == cdna_matches.simpleName.substring(0,4) && novel_animal == gdna_ref.simpleName.substring(0,4)
 	
 	input:
 	each gdna_ref
 	tuple path(novel), val(novel_animal)
-	tuple path(cdna_matches), val(cdna_match_animal)
+	each cdna_matches
 	
 	output:
-	tuple path("*reads.fasta"), val(cdna_match_animal)
+	tuple path("*reads.fasta"), val(novel_animal)
 	
 	script:
 	"""
@@ -962,18 +968,18 @@ process CLUSTAL_ALIGN {
 	// generate alignment in fasta format and distance matrix
 	// distance matrix can be used to parse closest matches to known alleles
 	
-	tag "${novel_animal}"
+	tag "${reads_animal}"
 	publishDir params.novel_alleles, pattern: '*distance.txt', mode: 'copy'
 	
 	errorStrategy 'retry'
 	maxRetries 4
 	
 	when:
-	reads_animal == novel_animal
+	reads_animal == novel.simpleName.substring(0,4)
 	
 	input:
 	tuple path(reads), val(reads_animal)
-	tuple path(novel), val(novel_animal)
+	each novel
 	
 	output:
 	tuple path("*aligned.fasta"), val(reads_animal)
@@ -1001,12 +1007,12 @@ process PARSE_DISTANCES {
 	maxRetries 4
 	
 	when:
-	clustal_animal == novel_animal && clustal_animal == match_animal
+	clustal_animal == novel.simpleName.substring(0,4) && clustal_animal == cdna_matches.simpleName.substring(0,4)
 	
 	input:
 	tuple path(distances), val(clustal_animal)
-	tuple path(novel), val(novel_animal)
-	tuple path(cdna_matches), val(match_animal)
+	each novel
+	each cdna_matches
 	
 	output:
 	tuple path("*novel_closest_matches.xlsx"), val(clustal_animal), emit: closest_matches
@@ -1014,7 +1020,7 @@ process PARSE_DISTANCES {
 	
 	script:
 	"""
-	parse_clustalo_distances.py ${clustal_animal}
+	parse_clustalo_distances.py ${clustal_animal} ${novel} ${cdna_matches}
 	"""
 
 }
@@ -1026,7 +1032,7 @@ process CREATE_GENOTYPING_FASTA {
 	// 
 	// 27319 - create FASTA file that only has cDNA extensions and novel alleles
 	
-	tag "${putative_animal}"
+	tag "${closest_animal}"
 	publishDir params.genotyping, pattern: 'classified.fasta', mode: 'copy'
 	publishDir params.putative_new, pattern: '*putative.fasta', mode: 'copy'
 	
@@ -1034,21 +1040,21 @@ process CREATE_GENOTYPING_FASTA {
 	maxRetries 4
 	
 	when:
-	putative_animal == gdna_ref.simpleName.substring(0,4) && putative_animal == match_animal && putative_animal == closest_animal
+	putative.simpleName.substring(0,4) == gdna_ref.simpleName.substring(0,4) && putative.simpleName.substring(0,4) == matches.simpleName.substring(0,4) && putative.simpleName.substring(0,4) == closest_animal
 	
 	input:
-	tuple path(putative), val(putative_animal)
+	each putative
 	each gdna_ref
-	tuple path(matches), val(match_animal)
+	each matches
 	tuple path(closest_matches), val(closest_animal)
 	
 	output:
-	tuple path("*classified.fasta"), val(putative_animal), emit: classified
-	tuple path("*putative.fasta"), val(putative_animal), emit: new_allele
+	tuple path("*classified.fasta"), val(closest_animal), emit: classified
+	tuple path("*putative.fasta"), val(closest_animal), emit: new_allele
 	
 	script:
 	"""
-	create_genotyping_fasta.py ${putative_animal} ${gdna_ref}
+	create_genotyping_fasta.py ${closest_animal} ${putative} ${gdna_ref} ${matches}
 	"""
 
 }

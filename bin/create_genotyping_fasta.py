@@ -10,13 +10,15 @@ import os
 import sys
 
 animal = sys.argv[1]
-reference = sys.argv[2]
+putative_alleles = sys.argv[2]
+reference = sys.argv[3]
+cdna_matches = sys.argv[4]
 
 # create dictionary of classifications
 classified = {}
 	
 # add cdna matches
-with open(str(animal) + "_matches.aln") as tsvfile:
+with open(cdna_matches) as tsvfile:
 	reader = csv.reader(tsvfile, delimiter='\t')
 	for row in reader:
 		classified[row[0]] = ['extend-cdna', utils.removeSpecialCharacters(row[1])]
@@ -37,7 +39,7 @@ with open(str(animal) + "_classified.fasta", "a") as handle:
 	
 	# concatenate cDNA extensions and novel sequences with known IPD gDNA sequences
 	# this enables genotyping against an expanded gDNA library even when there aren't a huge number of gDNA matches in this specific set of samples		
-	for record in SeqIO.parse(str(animal) + "_putative_alleles.fasta", "fasta"):
+	for record in SeqIO.parse(putative_alleles, "fasta"):
 		# get information for matching sequence
 		allele_data = classified.get(record.name)
 		
@@ -58,7 +60,7 @@ with open(str(animal) + "_classified.fasta", "a") as handle:
 with open(str(animal) + "_putative.fasta", "a") as handle:	
 	# concatenate cDNA extensions and novel sequences with known IPD gDNA sequences
 	# this enables genotyping against an expanded gDNA library even when there aren't a huge number of gDNA matches in this specific set of samples		
-	for record in SeqIO.parse(str(animal) + "_putative_alleles.fasta", "fasta"):
+	for record in SeqIO.parse(putative_alleles, "fasta"):
 		# get information for matching sequence
 		allele_data = classified.get(record.name)
 		

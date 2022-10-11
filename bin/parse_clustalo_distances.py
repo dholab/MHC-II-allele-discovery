@@ -10,11 +10,13 @@ from pathlib import Path
 import sys
 
 animal = sys.argv[1]
+path_to_novel = sys.argv[2]
+path_to_cdna_matches = sys.argv[3]
 
 # test if there is data in novel.fasta
 # create output files if empty
 
-if os.stat(str(animal) + "_novel.fasta").st_size == 0:
+if os.stat(path_to_novel).st_size == 0:
 	Path(str(animal) + "_novel_closest_matches.xlsx").touch()
 	Path(str(animal) + "_distances_tmp.txt").touch()
 	sys.exit()
@@ -39,7 +41,7 @@ df.columns = df.columns.astype(str)
 
 # convert column names that are cdna_matches to cdna names
 # this makes it possible to glean lineages for novel alleles that are closest matches to cdna extensions
-cdna_dict = { seq_record.name : seq_record.description.split(' ')[1] for seq_record in SeqIO.parse(snakemake.input[2], "fasta")}
+cdna_dict = { seq_record.name : seq_record.description.split(' ')[1] for seq_record in SeqIO.parse(path_to_cdna_matches, "fasta")}
 df.rename(cdna_dict, inplace = True, axis = 1)
 
 # self-by-self comparisons always have a distance of 0.000000
@@ -48,7 +50,7 @@ df.rename(cdna_dict, inplace = True, axis = 1)
 df.replace(0.000000, 1)
 
 # get names of sequences in novel.fasta
-identifiers = [seq_record.id for seq_record in SeqIO.parse(str(animal) + "_reads.fasta", "fasta")]
+identifiers = [seq_record.id for seq_record in SeqIO.parse(path_to_novel, "fasta")]
 
 # create subset df with only novel fasta records as rows
 novel_df = df.loc[ identifiers , : ]
