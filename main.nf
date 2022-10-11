@@ -393,6 +393,7 @@ process RUN_PBAA {
 	tag "${sample}"
 	publishDir params.pbaa_clusters, pattern: "*_passed_cluster_sequences.fasta", mode: 'copy'
 	
+	cpus 1
 	errorStrategy 'retry'
 	maxRetries 4
 	
@@ -792,6 +793,7 @@ process MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE {
 	publishDir params.cdna_identical, pattern: '*merged.aln', mode: 'copy'
 	publishDir params.cdna_identical, pattern: '*gdna_single_temp.fasta', mode: 'copy'
 	
+	cpus 1
 	errorStrategy 'retry'
 	maxRetries 4
 	
@@ -1063,7 +1065,7 @@ process GENOTYPE_CSS {
 	when:
 	animal == classified.simpleName.substring(0,4)
 	
-	cpus = 1
+	cpus 4
 	errorStrategy 'retry'
 	maxRetries 4
 	
