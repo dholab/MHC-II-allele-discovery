@@ -132,7 +132,11 @@ workflow {
 	GENOTYPE_CSS (
 		CONVERT_BAM_TO_FASTQ.out,
 		CREATE_GENOTYPING_FASTA.out.classified
-			.map { fasta, animal -> fasta }
+			.filter { it[1] == 'mamu' }
+			.map { fasta, animal -> fasta },
+		CREATE_GENOTYPING_FASTA.out.classified
+		.filter { it[1] == 'mafa' }
+		.map { fasta, animal -> fasta }
 	)
 	
 	CREATE_MAMU_GENOTYPING_CSV (
@@ -394,7 +398,7 @@ process RUN_PBAA {
 	// suppress stderr so you can see which samples fail
 	
 	tag "${sample}"
-	publishDir params.pbaa_clusters, pattern: "*_passed_cluster_sequences.fasta", mode: 'copy'
+	publishDir params.pbaa_clusters, pattern: "*.fasta", mode: 'copy'
 	
 	cpus 1
 	errorStrategy 'retry'
@@ -1033,7 +1037,7 @@ process CREATE_GENOTYPING_FASTA {
 	// 27319 - create FASTA file that only has cDNA extensions and novel alleles
 	
 	tag "${closest_animal}"
-	publishDir params.genotyping, pattern: 'classified.fasta', mode: 'copy'
+	publishDir params.genotyping, pattern: '*classified.fasta', mode: 'copy'
 	publishDir params.putative_new, pattern: '*putative.fasta', mode: 'copy'
 	
 	errorStrategy 'retry'
@@ -1068,21 +1072,24 @@ process GENOTYPE_CSS {
 	tag "${sample}"
 	publishDir params.genotyping, pattern: '*.sam', mode: 'copy'
 	
-	when:
-	animal == classified.simpleName.substring(0,4)
-	
 	cpus 4
 	errorStrategy 'retry'
 	maxRetries 4
 	
 	input:
 	tuple path(fastq), val(sample), val(animal)
-	each classified
+	each mamu_classified
+	each mafa_classified
 	
 	output:
 	tuple path('*.sam'), val(sample), val(animal)
 	
 	script:
+	if( animal == 'mamu' )
+		classified = mamu_classified
+	else
+		classified = mafa_classified
+	
 	"""
 	minimap2 \
 	${fastq} \
