@@ -748,7 +748,7 @@ process FILTER_EXACT_GDNA_MATCHES {
 	maxRetries 4
 	
 	when:
-	putative_animal == fasta_animal && putative_animal == gdna.simpleName.substring(0,4)
+	putative_animal == fasta_animal && putative_animal && putative_animal == gdna.simpleName.substring(0,4)
 	
 	input:
 	tuple path(sam), val(putative_animal)
