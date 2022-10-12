@@ -982,7 +982,7 @@ process CLUSTAL_ALIGN {
 	// distance matrix can be used to parse closest matches to known alleles
 	
 	tag "${reads_animal}"
-	publishDir params.novel_alleles, pattern: '*distance.txt', mode: 'copy'
+	publishDir params.novel_alleles, pattern: '*distances.txt', mode: 'copy'
 	
 	errorStrategy 'retry'
 	maxRetries 4
