@@ -135,26 +135,28 @@ workflow {
 		PARSE_DISTANCES.out.closest_matches
 	)
 	
-	GENOTYPE_CSS (
+	GENOTYPE_MAMU_CSS (
 		CONVERT_BAM_TO_FASTQ.out,
 		CREATE_GENOTYPING_FASTA.out.classified
 			.filter { it[1] == 'mamu' }
-			.map { fasta, animal -> fasta },
+			.map { fasta, animal -> fasta }
+	)
+	
+	GENOTYPE_MAFA_CSS (
+		CONVERT_BAM_TO_FASTQ.out,
 		CREATE_GENOTYPING_FASTA.out.classified
-		.filter { it[1] == 'mafa' }
-		.map { fasta, animal -> fasta }
+			.filter { it[1] == 'mafa' }
+			.map { fasta, animal -> fasta }
 	)
 	
 	CREATE_MAMU_GENOTYPING_CSV (
-		GENOTYPE_CSS.out
-			.filter { it[2] == "mamu" }
+		GENOTYPE_MAMU_CSS.out
 			.map { sam, sample, animal -> sam }
 			.collect()
 	)
 	
 	CREATE_MAFA_GENOTYPING_CSV (
-		GENOTYPE_CSS.out
-			.filter { it[2] == "mafa" }
+		GENOTYPE_MAFA_CSS.out
 			.map { sam, sample, animal -> sam }
 			.collect()
 	)
@@ -1070,7 +1072,7 @@ process CREATE_GENOTYPING_FASTA {
 
 }
 
-process GENOTYPE_CSS {
+process GENOTYPE_MAMU_CSS {
 	
 	// identify reference sequences that are fully contained in CCS reads
 	// use trimmed full-length reads for mapping
@@ -1085,18 +1087,50 @@ process GENOTYPE_CSS {
 	
 	input:
 	tuple path(fastq), val(sample), val(animal)
-	each path(mamu_classified)
-	each path(mafa_classified)
+	each path(classified)
 	
 	output:
 	tuple path('*.sam'), val(sample), val(animal)
 	
 	script:
-	if( animal == 'mamu' )
-		classified = mamu_classified
-	else
-		classified = mafa_classified
+	"""
+	minimap2 \
+	${fastq} \
+	${classified} \
+	-ax map-hifi --eqx -t 3 \
+	| reformat.sh \
+	in=stdin.sam \
+	out=${sample}.sam \
+	ref=${classified} \
+	noheader=t \
+	editfilter=0 \
+	threads=1 \
+	ow=t
+	"""
+
+}
+
+process GENOTYPE_MAFA_CSS {
 	
+	// identify reference sequences that are fully contained in CCS reads
+	// use trimmed full-length reads for mapping
+	// use higher minratio and smaller maxindel per emails with Brian Bushnell
+	
+	tag "${sample}"
+	publishDir params.genotyping_sams, pattern: '*.sam', mode: 'copy'
+	
+	cpus 4
+	errorStrategy 'retry'
+	maxRetries 4
+	
+	input:
+	tuple path(fastq), val(sample), val(animal)
+	each path(classified)
+	
+	output:
+	tuple path('*.sam'), val(sample), val(animal)
+	
+	script:
 	"""
 	minimap2 \
 	${fastq} \
