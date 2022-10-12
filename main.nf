@@ -94,12 +94,14 @@ workflow {
 	)
 	
 	RENAME_MUSCLE_CDNA_MATCHES_FASTA (
-		FILTER_EXACT_GDNA_MATCHES.out.cdna_matches,
+		FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
+			.map { matches, animal -> matches },
 		FIND_MUSCLE_CDNA_GDNA_MATCHES.out
 	)
 	
 	EXTRACT_NOVEL_SEQUENCES (
-		FILTER_EXACT_GDNA_MATCHES.out.cdna_matches,
+		FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
+			.map { matches, animal -> matches },
 		RENAME_MUSCLE_CDNA_MATCHES_FASTA.out
 	)
 	
@@ -107,17 +109,21 @@ workflow {
 		PARSE_IPD_GENBANK.out.gdna,
 		EXTRACT_NOVEL_SEQUENCES.out,
 		RENAME_MUSCLE_CDNA_MATCHES_FASTA.out
+			.map { matches, animal -> matches }
 	)
 	
 	CLUSTAL_ALIGN (
 		MERGE_READS.out,
 		EXTRACT_NOVEL_SEQUENCES.out
+			.map { novel, animal -> novel }
 	)
 	
 	PARSE_DISTANCES (
 		CLUSTAL_ALIGN.out.distances,
-		EXTRACT_NOVEL_SEQUENCES.out,
+		EXTRACT_NOVEL_SEQUENCES.out
+			.map { novel, animal -> novel },
 		FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
+			.map { matches, animal -> matches }
 	)
 	
 	CREATE_GENOTYPING_FASTA (
@@ -194,6 +200,7 @@ params.gdna_identical = params.results + "/" + "07-gdna-identical"
 params.cdna_identical = params.results + "/" + "08-muscle-cdna-identical"
 params.novel_alleles = params.results + "/" + "09-novel"
 params.genotyping = params.results + "/" + "10-genotyping"
+params.genotyping_sams = params.genotyping + "/" + "genotyping_sams"
 params.putative_new = params.results + "/" + "11-putative-new-alleles"
 
 params.pbaa_guides = params.pbaa_resources + "/" + "*.fasta"
@@ -400,7 +407,7 @@ process RUN_PBAA {
 	tag "${sample}"
 	publishDir params.pbaa_clusters, pattern: "*.fasta", mode: 'copy'
 	
-	cpus 1
+	cpus 2
 	errorStrategy 'retry'
 	maxRetries 4
 	
@@ -724,7 +731,7 @@ process MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA {
 	
 	input:
 	tuple path(putative), val(putative_animal)
-	each gdna 
+	each path(gdna) 
 	
 	output:
 	tuple path("*all_mappings.sam"), val(putative_animal)
@@ -760,8 +767,8 @@ process FILTER_EXACT_GDNA_MATCHES {
 	
 	input:
 	tuple path(sam), val(putative_animal)
-	each fasta
-	each gdna
+	each path(fasta)
+	each path(gdna)
 	
 	output:
 	tuple path("*_gdna_match.sam"), val(putative_animal), emit: gdna_matches
@@ -809,7 +816,7 @@ process MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE {
 	
 	input:
 	tuple path(cdna_matches), val(putative_animal)
-	each cdna
+	each path(cdna)
 	
 	output:
 	tuple path("*merged.aln"), val(putative_animal), emit: merged
@@ -858,10 +865,10 @@ process RENAME_MUSCLE_CDNA_MATCHES_FASTA {
 	maxRetries 4
 	
 	when:
-	cdna_matches.simpleName.substring(0,4) == gdna_animal
+	gdna_animal == cdna_matches.simpleName.substring(0,4)
 	
 	input:
-	each cdna_matches
+	each path(cdna_matches)
 	tuple path(matches_aln), val(gdna_animal)
 	
 	output:
@@ -919,7 +926,7 @@ process EXTRACT_NOVEL_SEQUENCES {
 	no_gdna_match.simpleName.substring(0,4) == cdna_animal
 	
 	input:
-	each no_gdna_match
+	each path(no_gdna_match)
 	tuple path(cdna_matches), val(cdna_animal)
 	
 	output:
@@ -952,9 +959,9 @@ process MERGE_READS {
 	novel_animal == cdna_matches.simpleName.substring(0,4) && novel_animal == gdna_ref.simpleName.substring(0,4)
 	
 	input:
-	each gdna_ref
+	each path(gdna_ref)
 	tuple path(novel), val(novel_animal)
-	each cdna_matches
+	each path(cdna_matches)
 	
 	output:
 	tuple path("*reads.fasta"), val(novel_animal)
@@ -983,7 +990,7 @@ process CLUSTAL_ALIGN {
 	
 	input:
 	tuple path(reads), val(reads_animal)
-	each novel
+	each path(novel)
 	
 	output:
 	tuple path("*aligned.fasta"), val(reads_animal)
@@ -1015,8 +1022,8 @@ process PARSE_DISTANCES {
 	
 	input:
 	tuple path(distances), val(clustal_animal)
-	each novel
-	each cdna_matches
+	each path(novel)
+	each path(cdna_matches)
 	
 	output:
 	tuple path("*novel_closest_matches.xlsx"), val(clustal_animal), emit: closest_matches
@@ -1037,8 +1044,8 @@ process CREATE_GENOTYPING_FASTA {
 	// 27319 - create FASTA file that only has cDNA extensions and novel alleles
 	
 	tag "${closest_animal}"
-	publishDir params.genotyping, pattern: '*classified.fasta', mode: 'copy'
-	publishDir params.putative_new, pattern: '*putative.fasta', mode: 'copy'
+	publishDir params.genotyping, pattern: '*_classified.fasta', mode: 'copy'
+	publishDir params.putative_new, pattern: '*_putative.fasta', mode: 'copy'
 	
 	errorStrategy 'retry'
 	maxRetries 4
@@ -1047,14 +1054,14 @@ process CREATE_GENOTYPING_FASTA {
 	putative.simpleName.substring(0,4) == gdna_ref.simpleName.substring(0,4) && putative.simpleName.substring(0,4) == matches.simpleName.substring(0,4) && putative.simpleName.substring(0,4) == closest_animal
 	
 	input:
-	each putative
-	each gdna_ref
-	each matches
+	each path(putative)
+	each path(gdna_ref)
+	each path(matches)
 	tuple path(closest_matches), val(closest_animal)
 	
 	output:
-	tuple path("*classified.fasta"), val(closest_animal), emit: classified
-	tuple path("*putative.fasta"), val(closest_animal), emit: new_allele
+	tuple path("*_classified.fasta"), val(closest_animal), emit: classified
+	tuple path("*_putative.fasta"), val(closest_animal), emit: new_allele
 	
 	script:
 	"""
@@ -1070,7 +1077,7 @@ process GENOTYPE_CSS {
 	// use higher minratio and smaller maxindel per emails with Brian Bushnell
 	
 	tag "${sample}"
-	publishDir params.genotyping, pattern: '*.sam', mode: 'copy'
+	publishDir params.genotyping_sams, pattern: '*.sam', mode: 'copy'
 	
 	cpus 4
 	errorStrategy 'retry'
@@ -1078,8 +1085,8 @@ process GENOTYPE_CSS {
 	
 	input:
 	tuple path(fastq), val(sample), val(animal)
-	each mamu_classified
-	each mafa_classified
+	each path(mamu_classified)
+	each path(mafa_classified)
 	
 	output:
 	tuple path('*.sam'), val(sample), val(animal)
@@ -1156,6 +1163,8 @@ process CREATE_MAFA_GENOTYPING_CSV {
 process CREATE_GENOTYPING_PIVOT {
 	
 	// make Excel-formatted pivot table from genotyping CSV
+	
+	publishDir params.genotyping, pattern: '*.sam', mode: 'copy'
 	
 	errorStrategy 'retry'
 	maxRetries 4
@@ -1307,4 +1316,5 @@ process PRELIMINARY_EXONERATE_MERGE_CDS_PUTATIVE {
 
 }
 // --------------------------------------------------------------- //
+
 
