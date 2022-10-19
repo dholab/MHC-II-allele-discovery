@@ -1,15 +1,15 @@
-# Nextflow pipeline for discovering new MHC Class II alleles in Rhesus and Cynomolgus Macaques
+# Nextflow pipeline for discovering novel MHC Class II alleles in Rhesus and Cynomolgus Macaques
 
 ## Overview
 
-These pipeline uses macaque MHC class II genomic DNA amplicon data to identify high-quality novel MHC alleles, which can then be submitted to the [Immuno Polymorphism Database](https://www.ebi.ac.uk/ipd/). Important updates in this version include:
+This pipeline uses macaque MHC class II genomic DNA amplicon data to identify high-quality novel MHC alleles, which can then be submitted to the [Immuno Polymorphism Database](https://www.ebi.ac.uk/ipd/). Important updates in this version include:
 
 - When sample name, class II locus, and macaque species are specified in the input file name, the workflow tailors most steps to each locus and animal
 - It uses pbAA [(Pacific BioSciences Amplicon Analysis)](https://github.com/PacificBiosciences/pbAA) to cluster similar amplicons, which are likely to represent discrete class II alleles.
 - It also requires that each putative novel allele is present in at least two individual animals. 
 
 ## Quick Start
-If Docker and NextFlow are already installed on your system, and simply run this command in a working directory of your choice:
+If Docker and NextFlow are already installed on your system, simply run this command in a working directory of your choice:
 
 ```
 nextflow run dholab/MHC-II-allele-discovery \
@@ -18,7 +18,9 @@ nextflow run dholab/MHC-II-allele-discovery \
 --bam_folder /path/to/folder/of/PacBio_CSS_bam_files 
 ```
 
-This command will automatically pull the workflow from GitHub and run it. If you do not have Docker and NextFlow installed, or want to tweak any of the workflow's default configurations, proceed to the following sections.
+After you supply correct file paths to a sample manifest and your data, this command will automatically pull the workflow from GitHub and run it. If you do not have Docker and NextFlow installed, or want to tweak any of the workflow's default configurations, proceed to the following sections.
+
+The sample manifest is a simple, headerless CSV file with three columns: BAM name, sample name, and animal ("mafa" for cynomolgus macaque, or "mamu" for rhesus macaque). An example can be found in `resources/sample.csv`.
 
 ## Detailed Instructions
 
@@ -32,7 +34,7 @@ git clone https://github.com/dholab/MHC-II-allele-discovery.git .
 
 After the workflow bundle has downloaded, you may want to ensure that the workflow's scripts are executable with `chmod +x bin/*`, though this should already be done.
 
-You will also need to install the Docker engine if you haven't already. The workflow pulls all software dependencies Docker Hub. As such, you will never permanently install that software on your system. To install Docker, simply visit the Docker installation page at [https://docs.docker.com/get-docker/](https://docs.docker.com/get-docker/).
+You will also need to install the Docker engine if you haven't already. The workflow pulls all software dependencies from Docker Hub. As such, you will never need to permanently install that software on your system. To install Docker, simply visit the Docker installation page at [https://docs.docker.com/get-docker/](https://docs.docker.com/get-docker/).
 
 ### Nextflow Installation
 
@@ -48,11 +50,11 @@ This workflow was built with the [NextFlow](https://www.nextflow.io/) workflow m
 
 #### 2) Installation with curl
 
-1. Run the following line in a directory where you'd like to install NextFlow, and run the following line of code:
+1. Run the following line in a directory where you'd like to install NextFlow:
    `curl -fsSL https://get.nextflow.io | bash`
 2. Add this directory to your $PATH. If on MacOS, a helpful guide can be viewed [here](https://www.architectryan.com/2012/10/02/add-to-the-path-on-mac-os-x-mountain-lion/).
 
-To double check that the installation was successful, type `nextflow -v` into the terminal. If it returns something like `nextflow version 21.04.0.5552`, you are set and ready to proceed.
+To double check that the installation was successful, type `nextflow -v` into the terminal. If it returns something like `nextflow version 21.04.0.5552`, Nextflow has successfully installed.
 
 To run the workflow, simply change into the workflow directory and run the following in the shell terminal:
 
@@ -82,7 +84,7 @@ The `nextflow.config` file specifies:
 - the allele database used for classification. The current class II amplicons amplify exon 2-exon 4 and include flanking sequence. I don't trust the existing gDNA sequences in IPD. In Geneious, I concatenated the exon 2 and exon 4 sequences from the `ipd-mhc-mamu-2022-07-11` release and then removed any intron sequences. This means there will be no matches to gDNA sequences during classification and allows only for cDNA extensions and novel alleles. This will allow us to create a high quality database of exon 2-4 gDNA sequences from scratch
 - exon 2-4 reference sequences from each class II locus from CY0333 and a text file specifying the length of these sequences. Used by exonerate to apply putative exon boundaries to putative alleles
 
-I modified the older version of this workflow, written for `Snakemake`, to:
+The older version of this workflow, written for `Snakemake`, was written to:
 
 - Create FASTQ files from the BAM files received from the UW Biotechnology Center
 - Apply primer trimming and minimum size filtering for multiple loci at the same time. This works by looking for the locus name in the sample name.
