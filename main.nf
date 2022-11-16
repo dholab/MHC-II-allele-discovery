@@ -1198,7 +1198,7 @@ process CREATE_GENOTYPING_PIVOT {
 	
 	// make Excel-formatted pivot table from genotyping CSV
 	
-	publishDir params.genotyping, pattern: '*.sam', mode: 'copy'
+	publishDir params.genotyping, pattern: '*.xlsx', mode: 'copy'
 	
 	errorStrategy 'retry'
 	maxRetries 4
@@ -1210,6 +1210,7 @@ process CREATE_GENOTYPING_PIVOT {
 	tuple path(csv), val(animal)
 	
 	output:
+	path "*.xlsx"
 	
 	script:
 	"""
