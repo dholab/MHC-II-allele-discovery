@@ -2,8 +2,6 @@
 
 nextflow.enable.dsl = 2
 
-// test
-
 // WORKFLOW SPECIFICATION
 // --------------------------------------------------------------- //
 workflow {
@@ -11,32 +9,24 @@ workflow {
 	// input channels
 	ch_sample_manifest = Channel
 		.fromPath( params.sample_manifest )
-		.splitCsv( header: ['bam', 'sample', 'animal'] )
-		.map { row -> tuple( "${params.bam_folder}/${row.bam}", row.sample, row.animal ) }
+		.splitCsv( header: ['fastq', 'sample', 'animal'] )
+		.map { row -> tuple( "${params.spades_contig_folder}/${row.fastq}", row.sample, row.animal ) }
 	
 	ch_ipd_ref = Channel
 		.fromPath( params.ipd_refs )
 	
 	// Workflow steps
-	CONVERT_BAM_TO_FASTQ (
-		ch_sample_manifest
-	)
 	
 	ORIENT_FASTQ (
-		CONVERT_BAM_TO_FASTQ.out
+		ch_sample_manifest
 	)
 	
 	TRIM_FASTQ (
 		ORIENT_FASTQ.out
 	)
-	
-	RUN_PBAA (
-		TRIM_FASTQ.out.fastq,
-		TRIM_FASTQ.out.index
-	)
-	
+
 	CLUSTER_PER_SAMPLE (
-		RUN_PBAA.out
+		TRIM_FASTQ.out.fastq,
 	)
 	
 	RENAME_CLUSTERS (
@@ -135,41 +125,6 @@ workflow {
 		PARSE_DISTANCES.out.closest_matches
 	)
 	
-	GENOTYPE_MAMU_CSS (
-		CONVERT_BAM_TO_FASTQ.out,
-		CREATE_GENOTYPING_FASTA.out.classified
-			.filter { it[1] == 'mamu' }
-			.map { fasta, animal -> fasta }
-	)
-	
-	GENOTYPE_MAFA_CSS (
-		CONVERT_BAM_TO_FASTQ.out,
-		CREATE_GENOTYPING_FASTA.out.classified
-			.filter { it[1] == 'mafa' }
-			.map { fasta, animal -> fasta }
-	)
-	
-	CREATE_MAMU_GENOTYPING_CSV (
-		GENOTYPE_MAMU_CSS.out
-			.map { sam, sample, animal -> sam }
-			.collect()
-	)
-	
-	CREATE_MAFA_GENOTYPING_CSV (
-		GENOTYPE_MAFA_CSS.out
-			.map { sam, sample, animal -> sam }
-			.collect()
-	)
-	
-	CREATE_GENOTYPING_PIVOT (
-		CREATE_MAMU_GENOTYPING_CSV.out
-		.mix (
-			
-			CREATE_MAFA_GENOTYPING_CSV.out
-			
-		)
-	)
-	
 	PRELIMINARY_EXONERATE_PUTATIVE (
 		CREATE_GENOTYPING_FASTA.out.new_allele
 	)
@@ -190,10 +145,8 @@ workflow {
 // DERIVATIVE PARAMETER SPECIFICATION
 // --------------------------------------------------------------- //
 // Derivative parameters, mostly for making specific results folders
-params.raw_fastqs = params.results + "/" + "00-fastq"
 params.orient_fastq = params.results + "/" + "01-orient-fastq"
 params.trimmed_fastq = params.results + "/" + "02-trim-fastq"
-params.pbaa_clusters = params.results + "/" + "03-pbaa/"
 params.sample_clusters = params.results + "/" + "04-cluster_per_sample"
 params.merged_clusters = params.results + "/" + "05-merged_clusters"
 params.shared_clusters = params.results + "/" + "06-shared_clusters"
@@ -201,11 +154,7 @@ params.ipd_ref_sep = params.results + "/" + "ipd_ref_separate"
 params.gdna_identical = params.results + "/" + "07-gdna-identical"
 params.cdna_identical = params.results + "/" + "08-muscle-cdna-identical"
 params.novel_alleles = params.results + "/" + "09-novel"
-params.genotyping = params.results + "/" + "10-genotyping"
-params.genotyping_sams = params.genotyping + "/" + "genotyping_sams"
 params.putative_new = params.results + "/" + "11-putative-new-alleles"
-
-params.pbaa_guides = params.pbaa_resources + "/" + "*.fasta"
 params.ipd_refs = params.classify_resources + "/" + "*.gbk"
 // --------------------------------------------------------------- //
 
@@ -213,37 +162,6 @@ params.ipd_refs = params.classify_resources + "/" + "*.gbk"
 
 // PROCESS SPECIFICATION 
 // --------------------------------------------------------------- //
-
-process CONVERT_BAM_TO_FASTQ {
-	
-	// Demultiplexed PacBio CCS reads are provided as unmapped BAM files
-	// Convert these CCS files to FASTQ format, renaming FASTQ to use sample names
-	// The FASTQ filenames need to contain the locus (dpa, dpb, etc.) in the filenames
-	// so the appropriate processing parameters can be applied during orienting, trimming, and pbaa
-	
-	tag "${sample}"
-	publishDir params.raw_fastqs, mode: 'copy'
-	
-	cpus 1
-	errorStrategy 'retry'
-	maxRetries 4
-	
-	input:
-	tuple path(bam), val(sample), val(animal)
-	
-	output:
-	tuple path("*.fastq.gz"), val(sample), val(animal)
-	
-	script:
-	basename = bam.getName()
-	if( bam.empty() )
-		error "The file ${basename} is not present in ${params.bam_folder}"
-	else
-		"""
-		samtools bam2fq ${bam} | gzip > ${sample}.fastq.gz
-		"""
-
-}
 
 process ORIENT_FASTQ {
 	
@@ -401,94 +319,6 @@ process TRIM_FASTQ {
 		"""
 }
 
-process RUN_PBAA {
-	
-	// run pbaa clustering on each FASTQ that has been trimmed
-	// suppress stderr so you can see which samples fail
-	
-	tag "${sample}"
-	publishDir params.pbaa_clusters, pattern: "*.fasta", mode: 'copy'
-	
-	cpus 2
-	errorStrategy 'retry'
-	maxRetries 4
-	
-	input:
-	tuple path(fastq), val(sample), val(animal)
-	path(index)
-	
-	output:
-	tuple path("*.fasta"), val(sample), val(animal)
-	
-	script:
-	if( sample.toLowerCase().contains("dpa") )
-		"""
-		samtools faidx ${params.dpa_guide_fasta} && \
-		/miniconda2/bin/pbaa cluster \
-		--min-read-qv 30 \
-		--max-reads-per-guide 1000 \
-		--max-alignments-per-read 2000 \
-		--num-threads ${task.cpus} \
-		${params.dpa_guide_fasta} \
-		${fastq} \
-		"${sample}" 2> /dev/null && \
-		mv ${sample}_passed_cluster_sequences.fasta ${sample}.fasta
-		"""
-	else if( sample.toLowerCase().contains("dpb") )
-		"""
-		samtools faidx ${params.dpb_guide_fasta} && \
-		/miniconda2/bin/pbaa cluster \
-		--min-read-qv 30 \
-		--max-reads-per-guide 1000 \
-		--max-alignments-per-read 2000 \
-		--num-threads ${task.cpus} \
-		${params.dpb_guide_fasta} \
-		${fastq} \
-		"${sample}" 2> /dev/null && \
-		mv ${sample}_passed_cluster_sequences.fasta ${sample}.fasta
-		"""
-	else if( sample.toLowerCase().contains("dqa") )
-		"""
-		samtools faidx ${params.dqa_guide_fasta} && \
-		/miniconda2/bin/pbaa cluster \
-		--min-read-qv 30 \
-		--max-reads-per-guide 1000 \
-		--max-alignments-per-read 2000 \
-		--num-threads ${task.cpus} \
-		${params.dqa_guide_fasta} \
-		${fastq} \
-		"${sample}" 2> /dev/null && \
-		mv ${sample}_passed_cluster_sequences.fasta ${sample}.fasta
-		"""
-	else if( sample.toLowerCase().contains("dqb") )
-		"""
-		samtools faidx ${params.dqb_guide_fasta} && \
-		/miniconda2/bin/pbaa cluster \
-		--min-read-qv 30 \
-		--max-reads-per-guide 1000 \
-		--max-alignments-per-read 2000 \
-		--num-threads ${task.cpus} \
-		${params.dqb_guide_fasta} \
-		${fastq} \
-		"${sample}" 2> /dev/null && \
-		mv ${sample}_passed_cluster_sequences.fasta ${sample}.fasta
-		"""
-	else if( sample.toLowerCase().contains("drb") )
-		"""
-		samtools faidx ${params.drb_guide_fasta} && \
-		/miniconda2/bin/pbaa cluster \
-		--min-read-qv 30 \
-		--max-reads-per-guide 1000 \
-		--max-alignments-per-read 2000 \
-		--num-threads ${task.cpus} \
-		${params.drb_guide_fasta} \
-		${fastq} \
-		"${sample}" 2> /dev/null && \
-		mv ${sample}_passed_cluster_sequences.fasta ${sample}.fasta
-		"""
-
-}
-
 process CLUSTER_PER_SAMPLE {
 	
 	// run bbbmap dedupe.sh on each sample, finding exact matches and absorbing containments.
@@ -514,9 +344,8 @@ process CLUSTER_PER_SAMPLE {
 	
 	script:
 	"""
-	gzip < /dev/null > ${sample}.fasta.gz
 	dedupe.sh -Xmx1g ow=t \
-	in=${sample}.fasta \
+	in=${sample}_trimmed.fastq \
 	outbest=${sample}_clustered.fasta.gz \
 	fo c \
 	threads=${task.cpus}
@@ -1068,153 +897,6 @@ process CREATE_GENOTYPING_FASTA {
 	script:
 	"""
 	create_genotyping_fasta.py ${closest_animal} ${putative} ${gdna_ref} ${matches}
-	"""
-
-}
-
-process GENOTYPE_MAMU_CSS {
-	
-	// identify reference sequences that are fully contained in CCS reads
-	// use trimmed full-length reads for mapping
-	// use higher minratio and smaller maxindel per emails with Brian Bushnell
-	
-	tag "${sample}"
-	publishDir params.genotyping_sams, pattern: '*.sam', mode: 'copy'
-	
-	cpus 4
-	errorStrategy 'retry'
-	maxRetries 4
-	
-	input:
-	tuple path(fastq), val(sample), val(animal)
-	each path(classified)
-	
-	output:
-	tuple path('*.sam'), val(sample), val(animal)
-	
-	script:
-	"""
-	minimap2 \
-	${fastq} \
-	${classified} \
-	-ax map-hifi --eqx -t 3 \
-	| reformat.sh \
-	in=stdin.sam \
-	out=${sample}.sam \
-	ref=${classified} \
-	noheader=t \
-	editfilter=0 \
-	threads=1 \
-	ow=t
-	"""
-
-}
-
-process GENOTYPE_MAFA_CSS {
-	
-	// identify reference sequences that are fully contained in CCS reads
-	// use trimmed full-length reads for mapping
-	// use higher minratio and smaller maxindel per emails with Brian Bushnell
-	
-	tag "${sample}"
-	publishDir params.genotyping_sams, pattern: '*.sam', mode: 'copy'
-	
-	cpus 4
-	errorStrategy 'retry'
-	maxRetries 4
-	
-	input:
-	tuple path(fastq), val(sample), val(animal)
-	each path(classified)
-	
-	output:
-	tuple path('*.sam'), val(sample), val(animal)
-	
-	script:
-	"""
-	minimap2 \
-	${fastq} \
-	${classified} \
-	-ax map-hifi --eqx -t 3 \
-	| reformat.sh \
-	in=stdin.sam \
-	out=${sample}.sam \
-	ref=${classified} \
-	noheader=t \
-	editfilter=0 \
-	threads=1 \
-	ow=t
-	"""
-
-}
-
-process CREATE_MAMU_GENOTYPING_CSV {
-	
-	// create CSV file containing sample name, allele name, and count of reads matching allele
-	
-	errorStrategy 'retry'
-	maxRetries 4
-	
-	input:
-	path(sam_list)
-	
-	output:
-	tuple path("*.csv"), val("mamu")
-	
-	script:
-	sam_string = sam_list.join(",")
-	
-	"""
-	create_genotyping_csv.py "mamu" ${sam_string}
-	"""
-
-}
-
-
-process CREATE_MAFA_GENOTYPING_CSV {
-	
-	// create CSV file containing sample name, allele name, and count of reads matching allele
-
-	errorStrategy 'retry'
-	maxRetries 4
-		
-	input:
-	path(sam_list)
-	
-	output:
-	tuple path("*.csv"), val("mafa")
-	
-	script:
-	sam_string = sam_list.join(",")
-	
-	"""
-	create_genotyping_csv.py "mafa" ${sam_string}
-	"""
-
-}
-
-
-process CREATE_GENOTYPING_PIVOT {
-	
-	// make Excel-formatted pivot table from genotyping CSV
-	
-	publishDir params.genotyping, pattern: '*.xlsx', mode: 'copy'
-	
-	errorStrategy 'retry'
-	maxRetries 4
-	
-	tag "${animal}"
-	publishDir params.genotyping, mode: 'move'
-	
-	input:
-	tuple path(csv), val(animal)
-	
-	output:
-	path "*.xlsx"
-	
-	script:
-	"""
-	genotyping.py ${animal}
 	"""
 
 }
