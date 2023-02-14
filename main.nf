@@ -17,8 +17,12 @@ workflow {
 	
 	// Workflow steps
 	
-	ORIENT_FASTQ (
+	EXTRACT_CLASSII (
 		ch_sample_manifest
+	)
+
+	ORIENT_FASTQ (
+		EXTRACT_CLASSII.out
 	)
 	
 	TRIM_FASTQ (
@@ -145,6 +149,7 @@ workflow {
 // DERIVATIVE PARAMETER SPECIFICATION
 // --------------------------------------------------------------- //
 // Derivative parameters, mostly for making specific results folders
+params.extract_fastq = params.results + "/" + "00-extract-fastq"
 params.orient_fastq = params.results + "/" + "01-orient-fastq"
 params.trimmed_fastq = params.results + "/" + "02-trim-fastq"
 params.sample_clusters = params.results + "/" + "04-cluster_per_sample"
@@ -154,6 +159,7 @@ params.ipd_ref_sep = params.results + "/" + "ipd_ref_separate"
 params.gdna_identical = params.results + "/" + "07-gdna-identical"
 params.cdna_identical = params.results + "/" + "08-muscle-cdna-identical"
 params.novel_alleles = params.results + "/" + "09-novel"
+params.genotyping = params.results + "/" + "10-genotyping"
 params.putative_new = params.results + "/" + "11-putative-new-alleles"
 params.ipd_refs = params.classify_resources + "/" + "*.gbk"
 // --------------------------------------------------------------- //
@@ -163,9 +169,39 @@ params.ipd_refs = params.classify_resources + "/" + "*.gbk"
 // PROCESS SPECIFICATION 
 // --------------------------------------------------------------- //
 
+process EXTRACT_CLASSII {
+
+	// use bbduk to extract class II sequences from FASTQ files
+
+	tag "${sample}"
+	publishDir params.extract_fastq, mode: 'copy'
+	
+	cpus 1
+	memory '2.5 GB'
+	errorStrategy 'retry'
+	maxRetries 4
+	
+	input:
+	tuple path(fastq), val(sample), val(animal)
+	
+	output:
+	tuple path("*.fastq"), val(sample), val(animal), emit: fastq
+
+	script:
+	"""
+	bbduk.sh -Xmx1g \
+	in=${fastq} \
+	ref=${params.combined_reference} \
+	outm=${sample}_extracted.fastq \
+	mcf=0.05
+	"""
+
+}
+
 process ORIENT_FASTQ {
 	
 	// use vsearch orient command to ensure reads are all in the same orientation
+	// for SPAdes contigs, use multi-FASTA file with all contigs for reference
 	
 	tag "${sample}"
 	publishDir params.orient_fastq, mode: 'copy'
@@ -181,36 +217,11 @@ process ORIENT_FASTQ {
 	tuple path("*.fastq"), val(sample), val(animal)
 	
 	script:
-	if( sample.toLowerCase().contains("dpa") )
-		"""
-		vsearch --orient ${fastq} \
-		--db ${params.dpa_reference} \
-		--fastqout ${sample}.fastq
-		"""
-	else if( sample.toLowerCase().contains("dpb") )
-		"""
-		vsearch --orient ${fastq} \
-		--db ${params.dpb_reference} \
-		--fastqout ${sample}.fastq
-		"""
-	else if( sample.toLowerCase().contains("dqa") )
-		"""
-		vsearch --orient ${fastq} \
-		--db ${params.dqa_reference} \
-		--fastqout ${sample}.fastq
-		"""
-	else if( sample.toLowerCase().contains("dqb") )
-		"""
-		vsearch --orient ${fastq} \
-		--db ${params.dqb_reference} \
-		--fastqout ${sample}.fastq
-		"""
-	else if( sample.toLowerCase().contains("drb") )
-		"""
-		vsearch --orient ${fastq} \
-		--db ${params.drb_reference} \
-		--fastqout ${sample}.fastq
-		"""
+	"""
+	vsearch --orient ${fastq} \
+	--db ${params.combined_reference} \
+	--fastqout ${sample}.fastq
+	"""
 	
 }
 
@@ -220,6 +231,8 @@ process TRIM_FASTQ {
 	// failing to remove these sequences leads to artificial alleles with primer sequences at ends
 	// need to trim to minlength or else short sequences choke pbaa
 	// since sequences are oriented, only need to trim ends in one orientation
+	// when using SPAdes contigs pre-process with bbduk to filter per-locus reads
+	// concatenate all trimmed sequences into single file
 	
 	tag "${sample}"
 	publishDir params.trimmed_fastq, mode: 'copy'
@@ -234,89 +247,104 @@ process TRIM_FASTQ {
 	
 	output:
 	tuple path("*.fastq"), val(sample), val(animal), emit: fastq
-	path("*.fai"), emit: index
 	
 	script:
-	if( sample.toLowerCase().contains("dpa") )
-		"""
-		bbduk.sh -Xmx1g \
-		int=f \
-		in=${fastq} \
-		literal=${params.dpa_forward_primers} \
-		restrictleft=50 ktrim=l k=8 qin=33 \
-		minlength=${params.dpa_minimum_length} \
-		out=stdout.fastq \
-		| bbduk.sh -Xmx1g int=f in=stdin.fastq \
-		literal=${params.dpa_reverse_primers} \
-		restrictright=50 ktrim=r k=8 qin=33 \
-		minlength=${params.dpa_minimum_length} \
-		out=${sample}_trimmed.fastq && \
-		samtools fqidx ${sample}_trimmed.fastq
-		"""
-	else if( sample.toLowerCase().contains("dpb") )
-		"""
-		bbduk.sh -Xmx1g \
-		int=f \
-		in=${fastq} \
-		literal=${params.dpb_forward_primers} \
-		restrictleft=50 ktrim=l k=8 qin=33 \
-		minlength=${params.dpb_minimum_length} \
-		out=stdout.fastq \
-		| bbduk.sh -Xmx1g int=f in=stdin.fastq \
-		literal=${params.dpb_reverse_primers} \
-		restrictright=50 ktrim=r k=8 qin=33 \
-		minlength=${params.dpb_minimum_length} \
-		out=${sample}_trimmed.fastq && \
-		samtools fqidx ${sample}_trimmed.fastq
-		"""
-	else if( sample.toLowerCase().contains("dqa") )
-		"""
-		bbduk.sh -Xmx1g \
-		int=f \
-		in=${fastq} \
-		literal=${params.dqa_forward_primers} \
-		restrictleft=50 ktrim=l k=8 qin=33 \
-		minlength=${params.dqa_minimum_length} \
-		out=stdout.fastq \
-		| bbduk.sh -Xmx1g int=f in=stdin.fastq \
-		literal=${params.dqa_reverse_primers} \
-		restrictright=50 ktrim=r k=8 qin=33 \
-		minlength=${params.dqa_minimum_length} \
-		out=${sample}_trimmed.fastq && \
-		samtools fqidx ${sample}_trimmed.fastq
-		"""
-	else if( sample.toLowerCase().contains("dqb") )
-		"""
-		bbduk.sh -Xmx1g \
-		int=f \
-		in=${fastq} \
-		literal=${params.dqb_forward_primers} \
-		restrictleft=50 ktrim=l k=8 qin=33 \
-		minlength=${params.dqb_minimum_length} \
-		out=stdout.fastq \
-		| bbduk.sh int=f in=stdin.fastq \
-		literal=${params.dqb_reverse_primers} \
-		restrictright=50 ktrim=r k=8 qin=33 \
-		minlength=${params.dqb_minimum_length} \
-		out=${sample}_trimmed.fastq && \
-		samtools fqidx ${sample}_trimmed.fastq
-		"""
-	else if( sample.toLowerCase().contains("drb") )
-		"""
-		bbduk.sh -Xmx1g \
-		int=f \
-		in=${fastq} \
-		literal=${params.drb_forward_primers} \
-		restrictleft=50 ktrim=l k=8 qin=33 \
-		minlength=${params.drb_minimum_length} \
-		out=stdout.fastq \
-		| bbduk.sh int=f in=stdin.fastq \
-		literal=${params.drb_reverse_primers} \
-		restrictright=50 ktrim=r k=8 qin=33 \
-		minlength=${params.drb_minimum_length} \
-		out=${sample}_trimmed.fastq && \
-		samtools fqidx ${sample}_trimmed.fastq
-		"""
+	"""
+	bbduk.sh -Xmx1g \
+	in=${fastq} \
+	ref=${params.dpa_amplicon} \
+	outm=stdout.fastq \
+	mcf=0.1 \
+	| bbduk.sh -Xmx1g \
+	int=f \
+	in=stdin.fastq \
+	literal=${params.dpa_forward_primers} \
+	ktrim=l k=8 qin=33 editdistance=1 \
+	minlength=${params.dpa_minimum_length} \
+	out=stdout.fastq \
+	| bbduk.sh -Xmx1g int=f in=stdin.fastq \
+	literal=${params.dpa_reverse_primers} \
+	ktrim=r k=8 qin=33 editdistance=1 \
+	minlength=${params.dpa_minimum_length} \
+	append=t \
+	out=${sample}_trimmed.fastq
+
+	bbduk.sh -Xmx1g \
+	in=${fastq} \
+	ref=${params.dpb_amplicon} \
+	outm=stdout.fastq \
+	mcf=0.1 \
+	| bbduk.sh -Xmx1g \
+	int=f \
+	in=stdin.fastq \
+	literal=${params.dpb_forward_primers} \
+	ktrim=l k=8 qin=33 editdistance=1  \
+	minlength=${params.dpb_minimum_length} \
+	out=stdout.fastq \
+	| bbduk.sh -Xmx1g int=f in=stdin.fastq \
+	literal=${params.dpb_reverse_primers} \
+	ktrim=r k=8 qin=33 editdistance=1 \
+	minlength=${params.dpb_minimum_length} \
+	append=t \
+	out=${sample}_trimmed.fastq
+
+	bbduk.sh -Xmx1g \
+	in=${fastq} \
+	ref=${params.dqa_amplicon} \
+	outm=stdout.fastq \
+	mcf=0.1 \
+	| bbduk.sh -Xmx1g \
+	int=f \
+	in=stdin.fastq \
+	literal=${params.dqa_forward_primers} \
+	ktrim=l k=8 qin=33 editdistance=1  \
+	minlength=${params.dqa_minimum_length} \
+	out=stdout.fastq \
+	| bbduk.sh -Xmx1g int=f in=stdin.fastq \
+	literal=${params.dqa_reverse_primers} \
+	ktrim=r k=8 qin=33 editdistance=1 \
+	minlength=${params.dqa_minimum_length} \
+	append=t \
+	out=${sample}_trimmed.fastq
+
+	bbduk.sh -Xmx1g \
+	in=${fastq} \
+	ref=${params.dqb_amplicon} \
+	outm=stdout.fastq \
+	mcf=0.1 \
+	| bbduk.sh -Xmx1g \
+	int=f \
+	in=stdin.fastq \
+	literal=${params.dqb_forward_primers} \
+	ktrim=l k=8 qin=33 editdistance=1  \
+	minlength=${params.dqb_minimum_length} \
+	out=stdout.fastq \
+	| bbduk.sh int=f in=stdin.fastq \
+	literal=${params.dqb_reverse_primers} \
+	ktrim=r k=8 qin=33 editdistance=1 \
+	minlength=${params.dqb_minimum_length} \
+	append=t \
+	out=${sample}_trimmed.fastq
+	
+	bbduk.sh -Xmx1g \
+	in=${fastq} \
+	ref=${params.drb_amplicon} \
+	outm=stdout.fastq \
+	mcf=0.1 \
+	| bbduk.sh -Xmx1g \
+	int=f \
+	in=stdin.fastq \
+	literal=${params.drb_forward_primers} \
+	ktrim=l k=8 qin=33 editdistance=1  \
+	minlength=${params.drb_minimum_length} \
+	out=stdout.fastq \
+	| bbduk.sh int=f in=stdin.fastq \
+	literal=${params.drb_reverse_primers} \
+	ktrim=r k=8 qin=33 editdistance=1 \
+	minlength=${params.drb_minimum_length} \
+	append=t \
+	out=${sample}_trimmed.fastq
+	"""
 }
 
 process CLUSTER_PER_SAMPLE {
