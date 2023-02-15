@@ -17,129 +17,133 @@ workflow {
 	
 	// Workflow steps
 	
-	EXTRACT_CLASSII (
+	MAP_FASTQ (
 		ch_sample_manifest
 	)
 
-	ORIENT_FASTQ (
-		EXTRACT_CLASSII.out
-	)
-	
-	TRIM_FASTQ (
-		ORIENT_FASTQ.out
+	TRIM_TO_PACBIO_AMPLICONS (
+		MAP_FASTQ.out
 	)
 
-	CLUSTER_PER_SAMPLE (
-		TRIM_FASTQ.out.fastq,
+	FILTER_HARD_CLIPPED_AMPLICONS (
+		TRIM_TO_PACBIO_AMPLICONS.out
 	)
 	
-	RENAME_CLUSTERS (
-		CLUSTER_PER_SAMPLE.out
-	)
+	// TRIM_FASTQ (
+	// 	ORIENT_FASTQ.out
+	// )
+
+	// CLUSTER_PER_SAMPLE (
+	// 	TRIM_FASTQ.out.fastq,
+	// )
 	
-	MERGE_PER_MAMU_CLUSTERS (
-		RENAME_CLUSTERS.out
-			.filter { it[2] == "mamu" }
-			.map { fasta, sample, animal -> fasta }
-			.collect()
-	)
+	// RENAME_CLUSTERS (
+	// 	CLUSTER_PER_SAMPLE.out
+	// )
 	
-	MERGE_PER_MAFA_CLUSTERS (
-		RENAME_CLUSTERS.out
-			.filter { it[2] == "mafa" }
-			.map { fasta, sample, animal -> fasta }
-			.collect()
-	)
+	// MERGE_PER_MAMU_CLUSTERS (
+	// 	RENAME_CLUSTERS.out
+	// 		.filter { it[2] == "mamu" }
+	// 		.map { fasta, sample, animal -> fasta }
+	// 		.collect()
+	// )
 	
-	SHARED_ANIMALS (
-		MERGE_PER_MAMU_CLUSTERS.out
-			.mix (
-				MERGE_PER_MAFA_CLUSTERS.out
-			)
-	)
+	// MERGE_PER_MAFA_CLUSTERS (
+	// 	RENAME_CLUSTERS.out
+	// 		.filter { it[2] == "mafa" }
+	// 		.map { fasta, sample, animal -> fasta }
+	// 		.collect()
+	// )
 	
-	RENAME_PUTATIVE_ALLELE_CLUSTERS (
-		SHARED_ANIMALS.out.putative
-	)
+	// SHARED_ANIMALS (
+	// 	MERGE_PER_MAMU_CLUSTERS.out
+	// 		.mix (
+	// 			MERGE_PER_MAFA_CLUSTERS.out
+	// 		)
+	// )
 	
-	PARSE_IPD_GENBANK (
-		ch_ipd_ref
-	)
+	// RENAME_PUTATIVE_ALLELE_CLUSTERS (
+	// 	SHARED_ANIMALS.out.putative
+	// )
 	
-	MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA (
-		RENAME_PUTATIVE_ALLELE_CLUSTERS.out,
-		PARSE_IPD_GENBANK.out.gdna
-	)
+	// PARSE_IPD_GENBANK (
+	// 	ch_ipd_ref
+	// )
 	
-	FILTER_EXACT_GDNA_MATCHES (
-		MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA.out,
-		RENAME_PUTATIVE_ALLELE_CLUSTERS.out
-			.map { fasta, animal -> fasta },
-		PARSE_IPD_GENBANK.out.gdna
-	)
+	// MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA (
+	// 	RENAME_PUTATIVE_ALLELE_CLUSTERS.out,
+	// 	PARSE_IPD_GENBANK.out.gdna
+	// )
 	
-	MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE (
-		FILTER_EXACT_GDNA_MATCHES.out.cdna_matches,
-		PARSE_IPD_GENBANK.out.cdna
-	)
+	// FILTER_EXACT_GDNA_MATCHES (
+	// 	MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA.out,
+	// 	RENAME_PUTATIVE_ALLELE_CLUSTERS.out
+	// 		.map { fasta, animal -> fasta },
+	// 	PARSE_IPD_GENBANK.out.gdna
+	// )
 	
-	FIND_MUSCLE_CDNA_GDNA_MATCHES (
-		MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE.out.merged
-	)
+	// MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE (
+	// 	FILTER_EXACT_GDNA_MATCHES.out.cdna_matches,
+	// 	PARSE_IPD_GENBANK.out.cdna
+	// )
 	
-	RENAME_MUSCLE_CDNA_MATCHES_FASTA (
-		FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
-			.map { matches, animal -> matches },
-		FIND_MUSCLE_CDNA_GDNA_MATCHES.out
-	)
+	// FIND_MUSCLE_CDNA_GDNA_MATCHES (
+	// 	MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE.out.merged
+	// )
 	
-	EXTRACT_NOVEL_SEQUENCES (
-		FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
-			.map { matches, animal -> matches },
-		RENAME_MUSCLE_CDNA_MATCHES_FASTA.out
-	)
+	// RENAME_MUSCLE_CDNA_MATCHES_FASTA (
+	// 	FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
+	// 		.map { matches, animal -> matches },
+	// 	FIND_MUSCLE_CDNA_GDNA_MATCHES.out
+	// )
 	
-	MERGE_READS (
-		PARSE_IPD_GENBANK.out.gdna,
-		EXTRACT_NOVEL_SEQUENCES.out,
-		RENAME_MUSCLE_CDNA_MATCHES_FASTA.out
-			.map { matches, animal -> matches }
-	)
+	// EXTRACT_NOVEL_SEQUENCES (
+	// 	FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
+	// 		.map { matches, animal -> matches },
+	// 	RENAME_MUSCLE_CDNA_MATCHES_FASTA.out
+	// )
 	
-	CLUSTAL_ALIGN (
-		MERGE_READS.out,
-		EXTRACT_NOVEL_SEQUENCES.out
-			.map { novel, animal -> novel }
-	)
+	// MERGE_READS (
+	// 	PARSE_IPD_GENBANK.out.gdna,
+	// 	EXTRACT_NOVEL_SEQUENCES.out,
+	// 	RENAME_MUSCLE_CDNA_MATCHES_FASTA.out
+	// 		.map { matches, animal -> matches }
+	// )
 	
-	PARSE_DISTANCES (
-		CLUSTAL_ALIGN.out.distances,
-		EXTRACT_NOVEL_SEQUENCES.out
-			.map { novel, animal -> novel },
-		FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
-			.map { matches, animal -> matches }
-	)
+	// CLUSTAL_ALIGN (
+	// 	MERGE_READS.out,
+	// 	EXTRACT_NOVEL_SEQUENCES.out
+	// 		.map { novel, animal -> novel }
+	// )
 	
-	CREATE_GENOTYPING_FASTA (
-		RENAME_PUTATIVE_ALLELE_CLUSTERS.out
-			.map { clusters, animal -> clusters },
-		PARSE_IPD_GENBANK.out.gdna,
-		FIND_MUSCLE_CDNA_GDNA_MATCHES.out
-			.map { matches, animal -> matches },
-		PARSE_DISTANCES.out.closest_matches
-	)
+	// PARSE_DISTANCES (
+	// 	CLUSTAL_ALIGN.out.distances,
+	// 	EXTRACT_NOVEL_SEQUENCES.out
+	// 		.map { novel, animal -> novel },
+	// 	FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
+	// 		.map { matches, animal -> matches }
+	// )
 	
-	PRELIMINARY_EXONERATE_PUTATIVE (
-		CREATE_GENOTYPING_FASTA.out.new_allele
-	)
+	// CREATE_GENOTYPING_FASTA (
+	// 	RENAME_PUTATIVE_ALLELE_CLUSTERS.out
+	// 		.map { clusters, animal -> clusters },
+	// 	PARSE_IPD_GENBANK.out.gdna,
+	// 	FIND_MUSCLE_CDNA_GDNA_MATCHES.out
+	// 		.map { matches, animal -> matches },
+	// 	PARSE_DISTANCES.out.closest_matches
+	// )
 	
-	PRELIMINARY_EXONERATE_PROCESS_GFF_PUTATIVE (
-		PRELIMINARY_EXONERATE_PUTATIVE.out.gff
-	)
+	// PRELIMINARY_EXONERATE_PUTATIVE (
+	// 	CREATE_GENOTYPING_FASTA.out.new_allele
+	// )
 	
-	PRELIMINARY_EXONERATE_MERGE_CDS_PUTATIVE (
-		PRELIMINARY_EXONERATE_PROCESS_GFF_PUTATIVE.out.processed_gff
-	)
+	// PRELIMINARY_EXONERATE_PROCESS_GFF_PUTATIVE (
+	// 	PRELIMINARY_EXONERATE_PUTATIVE.out.gff
+	// )
+	
+	// PRELIMINARY_EXONERATE_MERGE_CDS_PUTATIVE (
+	// 	PRELIMINARY_EXONERATE_PROCESS_GFF_PUTATIVE.out.processed_gff
+	// )
 	
 }
 // --------------------------------------------------------------- //
@@ -149,9 +153,9 @@ workflow {
 // DERIVATIVE PARAMETER SPECIFICATION
 // --------------------------------------------------------------- //
 // Derivative parameters, mostly for making specific results folders
-params.extract_fastq = params.results + "/" + "00-extract-fastq"
-params.orient_fastq = params.results + "/" + "01-orient-fastq"
-params.trimmed_fastq = params.results + "/" + "02-trim-fastq"
+params.map_fastq = params.results + "/" + "01-map-fastq"
+params.trim_to_pacbio_amplicons = params.results + "/" + "02-trim-to-pacbio-amplicons"
+params.filter_hard_clipped_amplicons = params.results + "/" + "03-filter-hard-clipped-amplicons"
 params.sample_clusters = params.results + "/" + "04-cluster_per_sample"
 params.merged_clusters = params.results + "/" + "05-merged_clusters"
 params.shared_clusters = params.results + "/" + "06-shared_clusters"
@@ -169,12 +173,15 @@ params.ipd_refs = params.classify_resources + "/" + "*.gbk"
 // PROCESS SPECIFICATION 
 // --------------------------------------------------------------- //
 
-process EXTRACT_CLASSII {
+process MAP_FASTQ {
 
-	// use bbduk to extract class II sequences from FASTQ files
+	// use minimap2 to map SPAdes contigs to combined DPA, DPB, DQA, DQB, DRB reference FASTA
+	// this reference sequence contains 1kb of flanking sequence at end of each gene
+	// this is needed to ensure that indels near the PacBio amplicon ends map correctly
+	// after mapping, use samtools to sort the minimap2 output and convert to BAM file
 
 	tag "${sample}"
-	publishDir params.extract_fastq, mode: 'copy'
+	publishDir params.map_fastq, mode: 'copy'
 	
 	cpus 1
 	memory '2.5 GB'
@@ -185,42 +192,82 @@ process EXTRACT_CLASSII {
 	tuple path(fastq), val(sample), val(animal)
 	
 	output:
-	tuple path("*.fastq"), val(sample), val(animal), emit: fastq
+	tuple path("*.bam"), val(sample), val(animal)
 
 	script:
 	"""
-	bbduk.sh -Xmx1g \
-	in=${fastq} \
-	ref=${params.combined_reference} \
-	outm=${sample}_extracted.fastq \
-	mcf=0.05
+	minimap2 -ax asm20 \
+	${params.combined_reference} \
+	${fastq} \
+	--sam-hit-only --eqx \
+	| samtools sort - \
+	> ${sample}_mapped.bam
 	"""
-
 }
 
-process ORIENT_FASTQ {
+process TRIM_TO_PACBIO_AMPLICONS {
 	
-	// use vsearch orient command to ensure reads are all in the same orientation
-	// for SPAdes contigs, use multi-FASTA file with all contigs for reference
+	// use samtools ampliconclip to trim mapped sequences to PacBio amplicon coordinates
+	// this needs a BED file with the amplicon coordinates
+	// the coordinates are relative to the 1kb extended reference sequences
+	// when using ampliconclip need to take advantage of strand information
+	// to trim the correct end of the sequence
+	// 9100bp tolerance is needed because this is where PacBio amplicon is relative to 1kb extended DRB reference sequence
 	
 	tag "${sample}"
-	publishDir params.orient_fastq, mode: 'copy'
+	publishDir params.trim_to_pacbio_amplicons, mode: 'copy'
 	
 	cpus 1
 	errorStrategy 'retry'
 	maxRetries 4
 	
 	input:
-	tuple path(fastq), val(sample), val(animal)
+	tuple path(bam), val(sample), val(animal)
 	
 	output:
-	tuple path("*.fastq"), val(sample), val(animal)
+	tuple path("*.bam"), val(sample), val(animal)
 	
 	script:
 	"""
-	vsearch --orient ${fastq} \
-	--db ${params.combined_reference} \
-	--fastqout ${sample}.fastq
+	samtools ampliconclip \
+	-b ${params.primer_bed} \
+	--hard-clip \
+	--both-ends \
+	${sample}_mapped.bam \
+	--tolerance 9100 \
+	--strand \
+	--clipped \
+	| samtools sort \
+	> ${sample}_trimmed.bam \
+	&& samtools index ${sample}_trimmed.bam
+	"""
+	
+}
+
+process FILTER_HARD_CLIPPED_AMPLICONS {
+	
+	// for sequences to be alleles, they need to span the entire PacBio amplicon
+	// after running ampliconclip, sequences that have hard clips at both ends are the ones we want
+	// use a custom script to filter these sequences
+	
+	tag "${sample}"
+	publishDir params.filter_hard_clipped_amplicons, mode: 'copy'
+	
+	cpus 1
+	errorStrategy 'retry'
+	maxRetries 4
+	
+	input:
+	tuple path(bam), val(sample), val(animal)
+	
+	output:
+	tuple path("*.bam"), val(sample), val(animal)
+	
+	script:
+	"""
+	samtools index ${sample}_trimmed.bam
+	
+	python ${baseDir}/bin/filter_hard_clipped_ends.py ${sample}_trimmed.bam ${sample}_filtered.bam
 	"""
 	
 }
