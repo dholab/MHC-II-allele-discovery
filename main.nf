@@ -29,31 +29,23 @@ workflow {
 		TRIM_TO_PACBIO_AMPLICONS.out
 	)
 	
-	// TRIM_FASTQ (
-	// 	ORIENT_FASTQ.out
-	// )
-
-	// CLUSTER_PER_SAMPLE (
-	// 	TRIM_FASTQ.out.fastq,
-	// )
+	RENAME_CLUSTERS (
+		FILTER_HARD_CLIPPED_AMPLICONS.out
+	)
 	
-	// RENAME_CLUSTERS (
-	// 	CLUSTER_PER_SAMPLE.out
-	// )
+	MERGE_PER_MAMU_CLUSTERS (
+		RENAME_CLUSTERS.out
+			.filter { it[2] == "mamu" }
+			.map { fasta, sample, animal -> fasta }
+			.collect()
+	)
 	
-	// MERGE_PER_MAMU_CLUSTERS (
-	// 	RENAME_CLUSTERS.out
-	// 		.filter { it[2] == "mamu" }
-	// 		.map { fasta, sample, animal -> fasta }
-	// 		.collect()
-	// )
-	
-	// MERGE_PER_MAFA_CLUSTERS (
-	// 	RENAME_CLUSTERS.out
-	// 		.filter { it[2] == "mafa" }
-	// 		.map { fasta, sample, animal -> fasta }
-	// 		.collect()
-	// )
+	MERGE_PER_MAFA_CLUSTERS (
+		RENAME_CLUSTERS.out
+			.filter { it[2] == "mafa" }
+			.map { fasta, sample, animal -> fasta }
+			.collect()
+	)
 	
 	// SHARED_ANIMALS (
 	// 	MERGE_PER_MAMU_CLUSTERS.out
@@ -261,171 +253,17 @@ process FILTER_HARD_CLIPPED_AMPLICONS {
 	tuple path(bam), val(sample), val(animal)
 	
 	output:
-	tuple path("*.bam"), val(sample), val(animal)
+	tuple path("*.fasta"), val(sample), val(animal)
 	
 	script:
 	"""
 	samtools index ${sample}_trimmed.bam
 	
 	python ${baseDir}/bin/filter_hard_clipped_ends.py ${sample}_trimmed.bam ${sample}_filtered.bam
+
+	reformat.sh in=${sample}_filtered.bam out=${sample}_filtered.fasta
 	"""
 	
-}
-
-process TRIM_FASTQ {
-	
-	// use bbduk to remove 5' and 3' primer sequences
-	// failing to remove these sequences leads to artificial alleles with primer sequences at ends
-	// need to trim to minlength or else short sequences choke pbaa
-	// since sequences are oriented, only need to trim ends in one orientation
-	// when using SPAdes contigs pre-process with bbduk to filter per-locus reads
-	// concatenate all trimmed sequences into single file
-	
-	tag "${sample}"
-	publishDir params.trimmed_fastq, mode: 'copy'
-	
-	cpus 1
-	memory '2.5 GB'
-	errorStrategy 'retry'
-	maxRetries 4
-	
-	input:
-	tuple path(fastq), val(sample), val(animal)
-	
-	output:
-	tuple path("*.fastq"), val(sample), val(animal), emit: fastq
-	
-	script:
-	"""
-	bbduk.sh -Xmx1g \
-	in=${fastq} \
-	ref=${params.dpa_amplicon} \
-	outm=stdout.fastq \
-	mcf=0.1 \
-	| bbduk.sh -Xmx1g \
-	int=f \
-	in=stdin.fastq \
-	literal=${params.dpa_forward_primers} \
-	ktrim=l k=8 qin=33 editdistance=1 \
-	minlength=${params.dpa_minimum_length} \
-	out=stdout.fastq \
-	| bbduk.sh -Xmx1g int=f in=stdin.fastq \
-	literal=${params.dpa_reverse_primers} \
-	ktrim=r k=8 qin=33 editdistance=1 \
-	minlength=${params.dpa_minimum_length} \
-	append=t \
-	out=${sample}_trimmed.fastq
-
-	bbduk.sh -Xmx1g \
-	in=${fastq} \
-	ref=${params.dpb_amplicon} \
-	outm=stdout.fastq \
-	mcf=0.1 \
-	| bbduk.sh -Xmx1g \
-	int=f \
-	in=stdin.fastq \
-	literal=${params.dpb_forward_primers} \
-	ktrim=l k=8 qin=33 editdistance=1  \
-	minlength=${params.dpb_minimum_length} \
-	out=stdout.fastq \
-	| bbduk.sh -Xmx1g int=f in=stdin.fastq \
-	literal=${params.dpb_reverse_primers} \
-	ktrim=r k=8 qin=33 editdistance=1 \
-	minlength=${params.dpb_minimum_length} \
-	append=t \
-	out=${sample}_trimmed.fastq
-
-	bbduk.sh -Xmx1g \
-	in=${fastq} \
-	ref=${params.dqa_amplicon} \
-	outm=stdout.fastq \
-	mcf=0.1 \
-	| bbduk.sh -Xmx1g \
-	int=f \
-	in=stdin.fastq \
-	literal=${params.dqa_forward_primers} \
-	ktrim=l k=8 qin=33 editdistance=1  \
-	minlength=${params.dqa_minimum_length} \
-	out=stdout.fastq \
-	| bbduk.sh -Xmx1g int=f in=stdin.fastq \
-	literal=${params.dqa_reverse_primers} \
-	ktrim=r k=8 qin=33 editdistance=1 \
-	minlength=${params.dqa_minimum_length} \
-	append=t \
-	out=${sample}_trimmed.fastq
-
-	bbduk.sh -Xmx1g \
-	in=${fastq} \
-	ref=${params.dqb_amplicon} \
-	outm=stdout.fastq \
-	mcf=0.1 \
-	| bbduk.sh -Xmx1g \
-	int=f \
-	in=stdin.fastq \
-	literal=${params.dqb_forward_primers} \
-	ktrim=l k=8 qin=33 editdistance=1  \
-	minlength=${params.dqb_minimum_length} \
-	out=stdout.fastq \
-	| bbduk.sh int=f in=stdin.fastq \
-	literal=${params.dqb_reverse_primers} \
-	ktrim=r k=8 qin=33 editdistance=1 \
-	minlength=${params.dqb_minimum_length} \
-	append=t \
-	out=${sample}_trimmed.fastq
-	
-	bbduk.sh -Xmx1g \
-	in=${fastq} \
-	ref=${params.drb_amplicon} \
-	outm=stdout.fastq \
-	mcf=0.1 \
-	| bbduk.sh -Xmx1g \
-	int=f \
-	in=stdin.fastq \
-	literal=${params.drb_forward_primers} \
-	ktrim=l k=8 qin=33 editdistance=1  \
-	minlength=${params.drb_minimum_length} \
-	out=stdout.fastq \
-	| bbduk.sh int=f in=stdin.fastq \
-	literal=${params.drb_reverse_primers} \
-	ktrim=r k=8 qin=33 editdistance=1 \
-	minlength=${params.drb_minimum_length} \
-	append=t \
-	out=${sample}_trimmed.fastq
-	"""
-}
-
-process CLUSTER_PER_SAMPLE {
-	
-	// run bbbmap dedupe.sh on each sample, finding exact matches and absorbing containments.
-	// use PacBio clustering parameters from https://jgi.doe.gov/data-and-tools/bbtools/bb-tools-user-guide/dedupe-guide/ but change edit distance to 0.
-	// This should restrict clustering to identical sequences. 
-	// outbest parameter is not documented in dedupe.sh but is used in the example from the PacBio clustering and saves one representative sequence per cluster.
-	// Since the sequences in the cluster are identical and have an edit distance of 0, this exemplar sequence should be sufficient.
-	// 
-	// Some samples might not have output. Create empty output file and overwrite if data exists.
-	
-	tag "${sample}"
-	publishDir params.sample_clusters, mode: 'copy'
-	
-	cpus 1
-	errorStrategy 'retry'
-	maxRetries 4
-	
-	input:
-	tuple path(fasta), val(sample), val(animal)
-	
-	output:
-	tuple path("*_clustered.fasta.gz"), val(sample), val(animal)
-	
-	script:
-	"""
-	dedupe.sh -Xmx1g ow=t \
-	in=${sample}_trimmed.fastq \
-	outbest=${sample}_clustered.fasta.gz \
-	fo c \
-	threads=${task.cpus}
-	"""
-
 }
 
 process RENAME_CLUSTERS {
@@ -452,7 +290,6 @@ process RENAME_CLUSTERS {
 	addprefix=t \
 	threads=${task.cpus}
 	"""
-
 }
 
 process MERGE_PER_MAMU_CLUSTERS {
