@@ -47,16 +47,16 @@ workflow {
 			.collect()
 	)
 	
-	// SHARED_ANIMALS (
-	// 	MERGE_PER_MAMU_CLUSTERS.out
-	// 		.mix (
-	// 			MERGE_PER_MAFA_CLUSTERS.out
-	// 		)
-	// )
+	SHARED_ANIMALS (
+		MERGE_PER_MAMU_CLUSTERS.out
+			.mix (
+				MERGE_PER_MAFA_CLUSTERS.out
+			)
+	)
 	
-	// RENAME_PUTATIVE_ALLELE_CLUSTERS (
-	// 	SHARED_ANIMALS.out.putative
-	// )
+	RENAME_PUTATIVE_ALLELE_CLUSTERS (
+		SHARED_ANIMALS.out.putative
+	)
 	
 	// PARSE_IPD_GENBANK (
 	// 	ch_ipd_ref
