@@ -58,36 +58,36 @@ workflow {
 		SHARED_ANIMALS.out.putative
 	)
 	
-	// PARSE_IPD_GENBANK (
-	// 	ch_ipd_ref
-	// )
+	PARSE_IPD_GENBANK (
+		ch_ipd_ref
+	)
 	
-	// MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA (
-	// 	RENAME_PUTATIVE_ALLELE_CLUSTERS.out,
-	// 	PARSE_IPD_GENBANK.out.gdna
-	// )
+	MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA (
+		RENAME_PUTATIVE_ALLELE_CLUSTERS.out,
+		PARSE_IPD_GENBANK.out.gdna
+	)
 	
-	// FILTER_EXACT_GDNA_MATCHES (
-	// 	MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA.out,
-	// 	RENAME_PUTATIVE_ALLELE_CLUSTERS.out
-	// 		.map { fasta, animal -> fasta },
-	// 	PARSE_IPD_GENBANK.out.gdna
-	// )
+	FILTER_EXACT_GDNA_MATCHES (
+		MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA.out,
+		RENAME_PUTATIVE_ALLELE_CLUSTERS.out
+			.map { fasta, animal -> fasta },
+		PARSE_IPD_GENBANK.out.gdna
+	)
 	
-	// MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE (
-	// 	FILTER_EXACT_GDNA_MATCHES.out.cdna_matches,
-	// 	PARSE_IPD_GENBANK.out.cdna
-	// )
+	MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE (
+		FILTER_EXACT_GDNA_MATCHES.out.cdna_matches,
+		PARSE_IPD_GENBANK.out.cdna
+	)
 	
-	// FIND_MUSCLE_CDNA_GDNA_MATCHES (
-	// 	MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE.out.merged
-	// )
+	FIND_MUSCLE_CDNA_GDNA_MATCHES (
+		MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE.out.merged
+	)
 	
-	// RENAME_MUSCLE_CDNA_MATCHES_FASTA (
-	// 	FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
-	// 		.map { matches, animal -> matches },
-	// 	FIND_MUSCLE_CDNA_GDNA_MATCHES.out
-	// )
+	RENAME_MUSCLE_CDNA_MATCHES_FASTA (
+		FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
+			.map { matches, animal -> matches },
+		FIND_MUSCLE_CDNA_GDNA_MATCHES.out
+	)
 	
 	// EXTRACT_NOVEL_SEQUENCES (
 	// 	FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
