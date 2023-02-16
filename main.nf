@@ -586,8 +586,8 @@ process DEFINE_CDNA_MATCHES_AND_NOVELS {
 	path(cdna)
 	
 	output:
-	tuple path("*merged.aln"), val(putative_animal), emit: merged
-	tuple path("*gdna_single_temp.fasta"), val(putative_animal)
+	tuple path("cdna.gbk"), val(putative_animal), emit: merged
+	tuple path("novel.fasta"), val(putative_animal)
 	
 	script:
 	"""
