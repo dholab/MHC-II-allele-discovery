@@ -17,8 +17,12 @@ workflow {
 	
 	// Workflow steps
 	
-	MAP_FASTQ (
+	ORIENT_FASTQ (
 		ch_sample_manifest
+	)
+
+	MAP_FASTQ (
+		ORIENT_FASTQ.out
 	)
 
 	TRIM_TO_PACBIO_AMPLICONS (
@@ -145,6 +149,7 @@ workflow {
 // DERIVATIVE PARAMETER SPECIFICATION
 // --------------------------------------------------------------- //
 // Derivative parameters, mostly for making specific results folders
+params.orient_fastq = params.results + "/" + "00-orient-fastq"
 params.map_fastq = params.results + "/" + "01-map-fastq"
 params.trim_to_pacbio_amplicons = params.results + "/" + "02-trim-to-pacbio-amplicons"
 params.filter_hard_clipped_amplicons = params.results + "/" + "03-filter-hard-clipped-amplicons"
@@ -165,6 +170,32 @@ params.ipd_refs = params.classify_resources + "/" + "*.gbk"
 // PROCESS SPECIFICATION 
 // --------------------------------------------------------------- //
 
+process ORIENT_FASTQ {
+	
+	// use vsearch orient command to ensure reads are all in the same orientation
+	// this avoids complex reverse complementing some contigs in subsequent steps
+	
+	tag "${sample}"
+	publishDir params.orient_fastq, mode: 'copy'
+	
+	cpus 1
+	errorStrategy 'retry'
+	maxRetries 4
+	
+	input:
+	tuple path(fasta), val(sample), val(animal)
+	
+	output:
+	tuple path("*.fasta"), val(sample), val(animal)
+	
+	script:
+	"""
+	vsearch --orient ${fasta} \
+	--db ${params.combined_reference} \
+	--fastaout ${sample}.fasta
+	"""
+}
+
 process MAP_FASTQ {
 
 	// use minimap2 to map SPAdes contigs to combined DPA, DPB, DQA, DQB, DRB reference FASTA
@@ -181,7 +212,7 @@ process MAP_FASTQ {
 	maxRetries 4
 	
 	input:
-	tuple path(fastq), val(sample), val(animal)
+	tuple path(fasta), val(sample), val(animal)
 	
 	output:
 	tuple path("*.bam"), val(sample), val(animal)
@@ -190,7 +221,7 @@ process MAP_FASTQ {
 	"""
 	minimap2 -ax asm20 \
 	${params.combined_reference} \
-	${fastq} \
+	${fasta} \
 	--sam-hit-only --eqx \
 	| samtools sort - \
 	> ${sample}_mapped.bam
