@@ -78,20 +78,25 @@ workflow {
 		PARSE_IPD_GENBANK.out.gdna
 	)
 	
-	MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE (
+	DEFINE_CDNA_MATCHES_AND_NOVELS (
 		FILTER_EXACT_GDNA_MATCHES.out.cdna_matches,
 		PARSE_IPD_GENBANK.out.cdna
 	)
+
+	// MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE (
+	// 	FILTER_EXACT_GDNA_MATCHES.out.cdna_matches,
+	// 	PARSE_IPD_GENBANK.out.cdna
+	// )
 	
-	FIND_MUSCLE_CDNA_GDNA_MATCHES (
-		MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE.out.merged
-	)
+	// FIND_MUSCLE_CDNA_GDNA_MATCHES (
+	// 	MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE.out.merged
+	// )
 	
-	RENAME_MUSCLE_CDNA_MATCHES_FASTA (
-		FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
-			.map { matches, animal -> matches },
-		FIND_MUSCLE_CDNA_GDNA_MATCHES.out
-	)
+	// RENAME_MUSCLE_CDNA_MATCHES_FASTA (
+	// 	FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
+	// 		.map { matches, animal -> matches },
+	// 	FIND_MUSCLE_CDNA_GDNA_MATCHES.out
+	// )
 	
 	// EXTRACT_NOVEL_SEQUENCES (
 	// 	FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
@@ -562,6 +567,40 @@ process FILTER_EXACT_GDNA_MATCHES {
 	names=${putative_animal}_gdna_match.sam \
 	out=${putative_animal}_no-gdna_match.fasta
 	"""
+
+}
+
+process DEFINE_CDNA_MATCHES_AND_NOVELS {
+	// run python script to define cDNA matches and novel alleles
+	
+	tag "${putative_animal}"
+	publishDir params.cdna_identical, pattern: '*merged.aln', mode: 'copy'
+	publishDir params.cdna_identical, pattern: '*gdna_single_temp.fasta', mode: 'copy'
+	
+	cpus 1
+	errorStrategy 'retry'
+	maxRetries 4
+
+	input:
+	tuple path(cdna_matches), val(putative_animal)
+	path(cdna)
+	
+	output:
+	tuple path("*merged.aln"), val(putative_animal), emit: merged
+	tuple path("*gdna_single_temp.fasta"), val(putative_animal)
+	
+	script:
+	"""
+	minimap2 -ax splice \
+	${cdna_matches} \
+	${cdna} \
+	--eqx --sam-hit-only \
+	| samtools sort \
+	> mapped.bam \
+	&& samtools index mapped.bam
+
+	cdna_matches.py mapped.bam ${cdna_matches}
+	"""	
 
 }
 

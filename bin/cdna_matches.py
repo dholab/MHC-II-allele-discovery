@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import sys
 import pysam
 from Bio import SeqIO
 from Bio.SeqFeature import SeqFeature, FeatureLocation, CompoundLocation
@@ -7,7 +8,6 @@ from Bio.SeqRecord import SeqRecord
 
 mapped_bam = sys.argv[1]
 no_gdna_match_fasta = sys.argv[2]
-cdna_ref = sys.argv[3]
 
 def removeSpecialCharacters(in_str, special_characters='*|: ', replace_character='_'):
     '''remove specified special characters from input str'''
