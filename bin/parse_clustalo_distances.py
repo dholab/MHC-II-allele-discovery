@@ -7,30 +7,53 @@ from Bio.Seq import Seq
 import re
 import os
 from pathlib import Path
-import sys
+import argparse
 
-animal = sys.argv[1]
-path_to_novel = sys.argv[2]
-path_to_cdna_matches = sys.argv[3]
+# Define argument parser with usage message
+parser = argparse.ArgumentParser(
+    description="A script that processes a FASTA file of novel sequences and computes the closest matches to a reference set of sequences, with corresponding distances."
+)
+
+# Define required positional arguments
+parser.add_argument(
+    "novel",
+    metavar="novel.fasta",
+    type=str,
+    help="The path to a FASTA file containing novel sequences.",
+)
+
+parser.add_argument(
+    "cdna_matches",
+    metavar="cdna_matches.fasta",
+    type=str,
+    help="The path to a FASTA file containing sequences that extend existing IPD sequences.",
+)
+
+# Parse arguments
+args = parser.parse_args()
+
+# Set variable names from command line arguments
+path_to_novel = args.novel
+path_to_cdna_matches = args.cdna_matches
 
 # test if there is data in novel.fasta
 # create output files if empty
 
 if os.stat(path_to_novel).st_size == 0:
-	Path(str(animal) + "_novel_closest_matches.xlsx").touch()
-	Path(str(animal) + "_distances_tmp.txt").touch()
+	Path("novel_closest_matches.xlsx").touch()
+	Path("distances_tmp.txt").touch()
 	sys.exit()
 
 # import clustal omega distance file
 # remove spaces in sequence identifiers that makes distances.txt file human readable
 
-with open(str(animal) + "_distances.txt", "rt") as fin:
-	with open(str(animal) + "_distances_tmp.txt", "wt") as fout:
+with open("distances.txt", "rt") as fin:
+	with open("distances_tmp.txt", "wt") as fout:
 		for line in fin:
 			fout.write(re.sub(' +', ' ', line))
 
 # import into pandas dataframe
-df = pd.read_csv(str(animal) + "_distances_tmp.txt", skiprows=1, header=None, sep=" ", index_col=0)
+df = pd.read_csv("distances_tmp.txt", skiprows=1, header=None, sep=" ", index_col=0)
 
 # get row index names
 ordered_values = df.index.values.tolist()
@@ -87,4 +110,4 @@ for index, row in top5_df.iterrows():
 	top5_df.at[index, '4'] = top5_df.at[index, '4'] + ' (' + str(novel_df.at[row['0'], row['4']].round(3)) + ')'
 	top5_df.at[index, '5'] = top5_df.at[index, '5'] + ' (' + str(novel_df.at[row['0'], row['5']].round(3)) + ')'
 
-top5_df.to_excel(str(animal) + "_novel_closest_matches.xlsx")
+top5_df.to_excel("novel_closest_matches.xlsx")
