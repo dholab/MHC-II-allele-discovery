@@ -58,7 +58,8 @@ workflow {
 	)
 	
 	FILTER_EXACT_GDNA_MATCHES (
-		MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA.out.all_mappings
+		MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA.out.all_mappings,
+		RENAME_PUTATIVE_ALLELE_CLUSTERS.out.renamed_clusters,
 	)
 	
 	DEFINE_CDNA_MATCHES_AND_NOVELS (
@@ -66,14 +67,14 @@ workflow {
 		PARSE_IPD_GENBANK.out.ipd_cdna
 	)
 	
-	MERGE_READS (
+	MERGE_CDNA_MATCHES_AND_NOVELS (
 		PARSE_IPD_GENBANK.out.ipd_gdna,
 		DEFINE_CDNA_MATCHES_AND_NOVELS.out.cdna_extensions_fasta,
 		DEFINE_CDNA_MATCHES_AND_NOVELS.out.novel_alleles_fasta
 	)
 	
 	CLUSTAL_ALIGN (
-		MERGE_READS.out.merged_for_clustal_fasta
+		MERGE_CDNA_MATCHES_AND_NOVELS.out.merged_for_clustal_fasta
 	)
 	
 	FIND_CLOSEST_MATCHES (
@@ -489,10 +490,11 @@ process FILTER_EXACT_GDNA_MATCHES {
 	
 	input:
 		path(all_mappings_sam)
+		path(putative_alleles)
 	
 	output:
 		path("gdna_match.sam"), emit: gdna_matches_sam
-		path("*_no-gdna_match.fasta"), emit: no_gdna_matches_fasta
+		path("no-gdna_match.fasta"), emit: no_gdna_matches_fasta
 	
 	script:
 	"""
@@ -504,7 +506,7 @@ process FILTER_EXACT_GDNA_MATCHES {
 		include=t
 	
 	filterbyname.sh \
-		in=${fasta} \
+		in=${putative_alleles} \
 		names=gdna_match.sam \
 		out=no-gdna_match.fasta
 	"""
@@ -539,7 +541,7 @@ process DEFINE_CDNA_MATCHES_AND_NOVELS {
 	"""	
 }
 
-process MERGE_READS {
+process MERGE_CDNA_MATCHES_AND_NOVELS {
 
 	/*
 	Concatenate the input files to prepare for alignment with Clustal Omega.
