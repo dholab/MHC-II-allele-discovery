@@ -7,7 +7,6 @@ from Bio.SeqRecord import SeqRecord
 from Bio.SeqFeature import FeatureLocation, CompoundLocation
 
 input_fasta = sys.argv[1]
-animal = sys.argv[2]
 
 ipd_seqs = SeqIO.parse(open(input_fasta),"genbank")
 
@@ -18,8 +17,8 @@ def removeSpecialCharacters(in_str, special_characters='*|: ', replace_character
     
     return out_str
 
-with open(str(animal) + "_gdna_reference.fasta", "w") as gdna_output_handle:
-  with open(str(animal) + "_cdna_reference.fasta", "w") as cdna_output_handle:
+with open("gdna_reference.fasta", "w") as gdna_output_handle:
+  with open("cdna_reference.fasta", "w") as cdna_output_handle:
     for record in ipd_seqs:
       
       # Extract exon locations from the file

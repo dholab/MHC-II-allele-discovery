@@ -12,9 +12,6 @@ workflow {
 		.splitCsv( header: ['fastq', 'sample'] )
 		.map { row -> tuple( "${params.spades_contig_folder}/${row.fastq}", row.sample) }
 	
-	ch_ipd_ref = Channel
-		.fromPath( params.ipd_refs )
-	
 	// Workflow steps
 	
 	ORIENT_FASTQ (
@@ -52,7 +49,7 @@ workflow {
 	)
 	
 	PARSE_IPD_GENBANK (
-		ch_ipd_ref
+		params.classify_genbank
 	)
 	
 	MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA (
@@ -68,51 +65,28 @@ workflow {
 		FILTER_EXACT_GDNA_MATCHES.out.no_gdna_matches_fasta,
 		PARSE_IPD_GENBANK.out.ipd_cdna
 	)
-
-	// MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE (
-	// 	FILTER_EXACT_GDNA_MATCHES.out.cdna_matches,
-	// 	PARSE_IPD_GENBANK.out.cdna
-	// )
-	
-	// FIND_MUSCLE_CDNA_GDNA_MATCHES (
-	// 	MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE.out.merged
-	// )
-	
-	// RENAME_MUSCLE_CDNA_MATCHES_FASTA (
-	// 	FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
-	// 		.map { matches, animal -> matches },
-	// 	FIND_MUSCLE_CDNA_GDNA_MATCHES.out
-	// )
-	
-	// EXTRACT_NOVEL_SEQUENCES (
-	// 	FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
-	// 		.map { matches, animal -> matches },
-	// 	RENAME_MUSCLE_CDNA_MATCHES_FASTA.out
-	// )
 	
 	MERGE_READS (
 		PARSE_IPD_GENBANK.out.ipd_gdna,
-		DEFINE_CDNA_MATCHES_AND_NOVELS.out.cdna,
-		DEFINE_CDNA_MATCHES_AND_NOVELS.out.novel
+		DEFINE_CDNA_MATCHES_AND_NOVELS.out.cdna_extensions_fasta,
+		DEFINE_CDNA_MATCHES_AND_NOVELS.out.novel_alleles_fasta
 	)
 	
 	CLUSTAL_ALIGN (
-		MERGE_READS.out
+		MERGE_READS.out.merged_for_clustal_fasta
 	)
 	
-	PARSE_DISTANCES (
-		CLUSTAL_ALIGN.out.distances,
-		DEFINE_CDNA_MATCHES_AND_NOVELS.out.novel,
-		DEFINE_CDNA_MATCHES_AND_NOVELS.out.cdna
+	FIND_CLOSEST_MATCHES (
+		CLUSTAL_ALIGN.out.clustal_distances,
+		DEFINE_CDNA_MATCHES_AND_NOVELS.out.novel_alleles_fasta,
+		DEFINE_CDNA_MATCHES_AND_NOVELS.out.cdna_extensions_fasta
 	)
 	
 	// CREATE_GENOTYPING_FASTA (
-	// 	RENAME_PUTATIVE_ALLELE_CLUSTERS.out
-	// 		.map { clusters, animal -> clusters },
-	// 	PARSE_IPD_GENBANK.out.gdna,
-	// 	FIND_MUSCLE_CDNA_GDNA_MATCHES.out
-	// 		.map { matches, animal -> matches },
-	// 	PARSE_DISTANCES.out.closest_matches
+	// 	RENAME_PUTATIVE_ALLELE_CLUSTERS.out.renamed_clusters,
+	// 	PARSE_IPD_GENBANK.out.ipd_gdna,
+	// 	DEFINE_CDNA_MATCHES_AND_NOVELS.out.cdna,
+	// 	FIND_CLOSEST_MATCHES.out.closest_matches
 	// )
 	
 	// PRELIMINARY_EXONERATE_PUTATIVE (
@@ -135,20 +109,20 @@ workflow {
 // DERIVATIVE PARAMETER SPECIFICATION
 // --------------------------------------------------------------- //
 // Derivative parameters, mostly for making specific results folders
-params.orient_fastq = params.results + "/" + "00-orient-fastq"
-params.map_fastq = params.results + "/" + "01-map-fastq"
-params.trim_to_pacbio_amplicons = params.results + "/" + "02-trim-to-pacbio-amplicons"
-params.filter_hard_clipped_amplicons = params.results + "/" + "03-filter-hard-clipped-amplicons"
-params.sample_clusters = params.results + "/" + "04-cluster_per_sample"
-params.merged_clusters = params.results + "/" + "05-merged_clusters"
-params.shared_clusters = params.results + "/" + "06-shared_clusters"
-params.ipd_ref_sep = params.results + "/" + "ipd_ref_separate"
-params.gdna_identical = params.results + "/" + "07-gdna-identical"
-params.cdna_identical = params.results + "/" + "08-muscle-cdna-identical"
-params.novel_alleles = params.results + "/" + "09-novel"
-params.genotyping = params.results + "/" + "10-genotyping"
-params.putative_new = params.results + "/" + "11-putative-new-alleles"
-params.ipd_refs = params.classify_resources + "/" + "*.gbk"
+// params.orient_fastq = params.results + "/" + "00-orient-fastq"
+// params.map_fastq = params.results + "/" + "01-map-fastq"
+// params.trim_to_pacbio_amplicons = params.results + "/" + "02-trim-to-pacbio-amplicons"
+// params.filter_hard_clipped_amplicons = params.results + "/" + "03-filter-hard-clipped-amplicons"
+// params.sample_clusters = params.results + "/" + "04-cluster_per_sample"
+// params.merged_clusters = params.results + "/" + "05-merged_clusters"
+// params.shared_clusters = params.results + "/" + "06-shared_clusters"
+// params.ipd_ref_sep = params.results + "/" + "ipd_ref_separate"
+// params.gdna_identical = params.results + "/" + "07-gdna-identical"
+// params.cdna_identical = params.results + "/" + "08-muscle-cdna-identical"
+// params.novel_alleles = params.results + "/" + "09-novel"
+// params.genotyping = params.results + "/" + "10-genotyping"
+// params.putative_new = params.results + "/" + "11-putative-new-alleles"
+// params.ipd_refs = params.classify_resources + "/" + "*.gbk"
 // --------------------------------------------------------------- //
 
 
@@ -165,7 +139,6 @@ process ORIENT_FASTQ {
 
 	// Set process label and publish directory for output files
 	tag "${sample}"
-	publishDir params.orient_fastq, mode: 'copy'
 	
 	// Set process settings for resource allocation and error handling
 	cpus 1
@@ -201,7 +174,6 @@ process MAP_FASTQ {
 
 	// Set process label and publish directory for output files
 	tag "${sample}"
-	publishDir params.map_fastq, mode: 'copy'
 	
 	// Set process settings for resource allocation and error handling
 	cpus 1
@@ -240,7 +212,6 @@ process TRIM_TO_PACBIO_AMPLICONS {
 
 	// Set process label and publish directory for output files
 	tag "${sample}"
-	publishDir params.trim_to_pacbio_amplicons, mode: 'copy'
 	
 	// Set process settings for resource allocation and error handling
 	cpus 1
@@ -286,10 +257,8 @@ process FILTER_HARD_CLIPPED_AMPLICONS {
 	/*
 	 * Other parameters:
 	 *   - tag: tag for the process
-	 *   - publishDir: directory to publish output files to
 	 */
 	tag "${sample}"
-	publishDir params.filter_hard_clipped_amplicons, mode: 'copy'
 
 	// Set process settings for resource allocation and error handling
 	cpus 1
@@ -362,8 +331,6 @@ process MERGE_PER_SAMPLE_CLUSTERS {
 	It uses zcat and gzip to merge all the files and outputs a single FASTA file containing all the merged clusters.
 	The output file is published to the `merged_clusters` directory specified in the parameters.
 	*/
-
-	publishDir params.merged_clusters, mode: 'copy'
 	
 	errorStrategy 'retry'
 	maxRetries 4
@@ -394,18 +361,16 @@ process SHARED_ANIMALS {
 	* 
 	* A version of this is described in https://jgi.doe.gov/data-and-tools/bbtools/bb-tools-user-guide/dedupe-guide/
 	*/
-
-	publishDir params.shared_clusters, mode: 'copy'
 	
 	cpus 1
 	errorStrategy 'retry'
 	maxRetries 4
 	
 	input:
-	tuple path(fasta)
+	path(fasta)
 	
 	output:
-	tuple path("putative_alleles_temp.fasta"), emit: putative
+	path("putative_alleles_temp.fasta"), emit: putative
 	
 	script:
 	"""
@@ -437,16 +402,14 @@ process RENAME_PUTATIVE_ALLELE_CLUSTERS {
 	// Add integer FASTA id to gdna_match FASTA name to simplify downstream analyses.
 	// A timestamp is also added to the id to help identify the files used for genotyping.
 	
-	publishDir params.shared_clusters, mode: 'copy'
-	
 	errorStrategy 'retry'
 	maxRetries 4
 	
 	input:
-	tuple path(putative)
+	path(putative)
 	
 	output:
-	tuple path("putative_alleles.fasta"), emit: renamed_clusters
+	path("putative_alleles.fasta"), emit: renamed_clusters
 	
 	script:
 	"""
@@ -469,23 +432,21 @@ process RENAME_PUTATIVE_ALLELE_CLUSTERS {
 
 process PARSE_IPD_GENBANK {
 	
-	// Use Biopython to extract genomic DNA and cDNA sequences from an IPD Genbank file. The output files are saved as FASTA format..
-	
-	publishDir params.ipd_ref_sep, mode: 'copy'
+	// Use Biopython to extract genomic DNA and cDNA sequences from an IPD Genbank file. The output files are saved as FASTA format.
 	
 	cpus 1
 	errorStrategy 'retry'
 	maxRetries 4
 	
 	input:
-	path(guide_fasta)
+	path(ipd_genbank)
 	
 	output:
 	path("gdna_reference.fasta"), emit: ipd_gdna
 	path("cdna_reference.fasta"), emit: ipd_cdna
 	
 	"""
-	ipd_to_gdna_cdna.py ${guide_fasta} ${animal_name}
+	ipd_to_gdna_cdna.py ${ipd_genbank}
 	"""
 
 }
@@ -578,198 +539,37 @@ process DEFINE_CDNA_MATCHES_AND_NOVELS {
 	"""	
 }
 
-
-}
-
-process MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE {
-	
-	// among sequences that don't match existing full-length gDNA sequences
-	// find ones that extend known cDNA sequences to gDNA versions
-	// 
-	// rewritten in 23230 to exhaustively pairwise align gDNA sequences to cDNA library with MUSCLE
-	// and return alignments where the number of matched nucleotides exactly matches the length of the cDNA
-	// this is because the minimap2-based method I used previously failed to find cDNA matches that have a 5nt exon 8
-	// 
-	// modified in 27309 to minimize search space by first finding cDNA sequences within 50 substitutions of gDNA sequence
-	// instead of searching ~1000 cDNA sequences per gDNA sequence, this reduces the search space to ~30-50 in most cases
-	
-	tag "${putative_animal}"
-	publishDir params.cdna_identical, pattern: '*merged.aln', mode: 'copy'
-	publishDir params.cdna_identical, pattern: '*gdna_single_temp.fasta', mode: 'copy'
-	
-	cpus 1
-	errorStrategy 'retry'
-	maxRetries 4
-	
-	when:
-	putative_animal == cdna.simpleName.substring(0,4)
-	
-	input:
-	tuple path(cdna_matches), val(putative_animal)
-	each path(cdna)
-	
-	output:
-	tuple path("*merged.aln"), val(putative_animal), emit: merged
-	tuple path("*gdna_single_temp.fasta"), val(putative_animal)
-	
-	script:
-	"""
-	muscle_cdna_mapping.py ${cdna_matches} ${putative_animal} ${cdna}
-	"""
-	
-}
-
-process FIND_MUSCLE_CDNA_GDNA_MATCHES {
-	
-	// run awk to find gdna sequences that fully match sequence of cdna
-	
-	tag "${putative_animal}"
-	publishDir params.cdna_identical, mode: 'copy'
-	
-	errorStrategy 'retry'
-	maxRetries 4
-	
-	input:
-	tuple path(merged), val(putative_animal)
-	
-	output:
-	tuple path("*matches.aln"), val(putative_animal)
-	
-	shell:
-	'''
-	awk \'{{if( $4 == $5  ) print $0}}\' !{merged} > !{putative_animal}_matches.aln
-	'''
-
-}
-
-process RENAME_MUSCLE_CDNA_MATCHES_FASTA {
-	
-	// input gDNA sequences
-	// change the name of the sequence header
-	// write output sequences that match cDNAs to new file
-	
-	tag "${gdna_animal}"
-	publishDir params.cdna_identical, mode: 'copy'
-	
-	errorStrategy 'retry'
-	maxRetries 4
-	
-	when:
-	gdna_animal == cdna_matches.simpleName.substring(0,4)
-	
-	input:
-	each path(cdna_matches)
-	tuple path(matches_aln), val(gdna_animal)
-	
-	output:
-	tuple path("*cdna_matches.fasta"), val(cdna_animal)
-	
-	script:
-	cdna_animal = cdna_matches.simpleName.substring(0,4)
-	"""
-	#!/usr/bin/env python3
-	
-	import subprocess
-	from Bio import SeqIO
-	from Bio.SeqRecord import SeqRecord
-	from Bio.Seq import Seq
-	import csv
-	
-	# create output file in case it is empty
-	subprocess.run('touch ${cdna_animal}_cdna_matches.fasta', shell=True)
-	
-	# read input FASTA line-by-line
-	for record in SeqIO.parse("${cdna_matches}", "fasta"):
-	
-		# parse file with gdna sequences that match cdna sequences
-		with open("${matches_aln}") as tsvfile:
-			reader = csv.reader(tsvfile, delimiter='\t')
-			for row in reader:
-	
-				# test if name of sequence in cdna match file matches gdna sequence name
-				if row[0] == record.name:
-					# update name of sequence in output file
-					record.description = row[1] + '|' + row[0]
-	
-					# write to file
-					with open("${cdna_animal}_cdna_matches.fasta", "a") as handle:
-						SeqIO.write(record, handle, "fasta")
-	"""
-	
-}
-
-process EXTRACT_NOVEL_SEQUENCES {
-	
-	// the previous steps processed clusters that perfectly match known IPD cDNA sequences.
-	// Because the sequences in this experiment are supported by PacBio cDNA and pbaa gDNA sequences,
-	// we can submit them to IPD even if they don't match a current IPD cDNA sequence.
-	// 
-	// Map gDNA sequences to cDNAs and report reads that don't map
-	
-	tag "${cdna_animal}"
-	publishDir params.novel_alleles, mode: 'copy'
-	
-	errorStrategy 'retry'
-	maxRetries 4
-	
-	when:
-	no_gdna_match.simpleName.substring(0,4) == cdna_animal
-	
-	input:
-	each path(no_gdna_match)
-	tuple path(cdna_matches), val(cdna_animal)
-	
-	output:
-	tuple path("*novel.fasta"), val(cdna_animal)
-	
-	script:
-	no_gdna_animal = no_gdna_match.simpleName.substring(0,4)
-	
-	if( file(cdna_matches).isEmpty() )
-		"""
-		touch ${no_gdna_animal}_novel.fasta
-		"""
-	else
-		"""
-		mapPacBio.sh in=${no_gdna_match} ref=${cdna_matches} outu=${no_gdna_animal}_novel.fasta subfilter=0
-		"""
-
-}
-
 process MERGE_READS {
-	
-	// concatenate files to align with clustal omega
-	
-	tag "${novel_animal}"
-	
+
+	/*
+	Concatenate the input files to prepare for alignment with Clustal Omega.
+	*/
+
 	errorStrategy 'retry'
 	maxRetries 4
+
 	input:
-	
 	path(gdna_ref)
 	path(cdna_match)
 	path(novel)
-	
+
 	output:
-	path("*reads.fasta")
+	path("merged_reads.fasta"), emit: merged_for_clustal_fasta
 	
 	script:
 	"""
-	cat ${gdna_ref} ${cdna_match} ${novel} > merged_pre_clustal_reads.fasta
+	cat ${gdna_ref} ${cdna_match} ${novel} > merged_reads.fasta
 	"""
 
 }
 
 process CLUSTAL_ALIGN {
-	
-	// align reads with clustal omega
-	// generate alignment in fasta format and distance matrix
-	// distance matrix can be used to parse closest matches to known alleles
-	cpus 40
-  	executor 'local'
 
-	tag "${reads_animal}"
-	publishDir params.novel_alleles, pattern: '*distances.txt', mode: 'copy'
+	// This process aligns reads with Clustal Omega, generates an alignment in FASTA format, and produces a distance matrix.
+	// The distance matrix can be used to identify the closest matches to known alleles.
+	
+	cpus 40
+	executor 'local'
 	
 	errorStrategy 'retry'
 	maxRetries 4
@@ -778,9 +578,9 @@ process CLUSTAL_ALIGN {
 	path(merged)
 	
 	output:
-	path("*aligned.fasta"), emit: aligned
-	path("*distances.txt"), emit: distances
-
+	path("aligned.fasta"), emit: clustal_aligned
+	path("distances.txt"), emit: clustal_distances
+	
 	script:
 	"""
 	clustalo \
@@ -790,14 +590,11 @@ process CLUSTAL_ALIGN {
 	--threads=${task.cpus} \
 	--full
 	"""
-
 }
 
-process PARSE_DISTANCES {
+process FIND_CLOSEST_MATCHES {
 	
-	// parse clustal omega distances to find alleles in reference database and cDNA extensions that are nearest neighbors to novel sequences
-	
-	tag "${clustal_animal}"
+	// Find the closest matches in the reference database and cDNA extensions to novel sequences using Clustal Omega distances
 	
 	errorStrategy 'retry'
 	maxRetries 4
@@ -808,26 +605,23 @@ process PARSE_DISTANCES {
 	path(cdna_matches)
 	
 	output:
-	path("*novel_closest_matches.xlsx"), emit: closest_matches
-	path("*distances_tmp.txt"), emit: distances
+	path("novel_closest_matches.xlsx"), emit: closest_matches
+	path("distances_tmp.txt"), emit: distances
 	
 	script:
 	"""
-	parse_clustalo_distances.py ${novel} ${cdna_matches}
+	parse_clustal_distances.py ${novel} ${cdna_matches}
 	"""
 
+	cpus 1
 }
 
 process CREATE_GENOTYPING_FASTA {
 	
-	// to check accuracy of novel sequences, want to genotype IPD gDNA matches, cDNA matches, and novel sequences
-	// need to create FASTA file that contains all of these putative_alleles along with their classification
-	// 
-	// 27319 - create FASTA file that only has cDNA extensions and novel alleles
-	
-	tag "${closest_animal}"
-	publishDir params.genotyping, pattern: '*_classified.fasta', mode: 'copy'
-	publishDir params.putative_new, pattern: '*_putative.fasta', mode: 'copy'
+	// Create a FASTA file that contains putative alleles along with their classification for genotyping IPD gDNA matches, 
+    // cDNA matches, and novel sequences. 
+    //
+    // The file will contain only cDNA extensions and novel alleles.
 	
 	errorStrategy 'retry'
 	maxRetries 4
@@ -842,8 +636,8 @@ process CREATE_GENOTYPING_FASTA {
 	tuple path(closest_matches), val(closest_animal)
 	
 	output:
-	tuple path("*_classified.fasta"), val(closest_animal), emit: classified
-	tuple path("*_putative.fasta"), val(closest_animal), emit: new_allele
+	path("classified.fasta"), emit: cdna_extension_fasta
+	path("putative.fasta"), emit: putative_novel_allele_fasta
 	
 	script:
 	"""
@@ -865,8 +659,7 @@ process PRELIMINARY_EXONERATE_PUTATIVE {
 	// then re-run exonerate in protein mode to get more accurate annotations
 	// 
 	// 27319 - create annotations from FASTA file as named in genotyping file
-	
-	tag "${animal}"
+
 	errorStrategy 'retry'
 	maxRetries 4
 	
@@ -935,8 +728,6 @@ process PRELIMINARY_EXONERATE_PROCESS_GFF_PUTATIVE {
 	// need to pass experiment and paths to needed tar.gz files
 	// script is in Docker container
 	
-	tag "${animal}"
-	
 	errorStrategy 'retry'
 	maxRetries 4
 	
@@ -964,9 +755,6 @@ process PRELIMINARY_EXONERATE_MERGE_CDS_PUTATIVE {
 	// so they view as a single annotation in Geneious and can be automatically translated.
 	// 
 	// Since we only work with CDS annotations, only print these to final file.
-	
-	tag "${animal}"
-	publishDir params.putative_new, mode: 'move'
 	
 	errorStrategy 'retry'
 	maxRetries 4
