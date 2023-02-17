@@ -9,8 +9,8 @@ workflow {
 	// input channels
 	ch_sample_manifest = Channel
 		.fromPath( params.sample_manifest )
-		.splitCsv( header: ['fastq', 'sample', 'animal'] )
-		.map { row -> tuple( "${params.spades_contig_folder}/${row.fastq}", row.sample, row.animal ) }
+		.splitCsv( header: ['fastq', 'sample'] )
+		.map { row -> tuple( "${params.spades_contig_folder}/${row.fastq}", row.sample) }
 	
 	ch_ipd_ref = Channel
 		.fromPath( params.ipd_refs )
@@ -22,40 +22,29 @@ workflow {
 	)
 
 	MAP_FASTQ (
-		ORIENT_FASTQ.out
+		ORIENT_FASTQ.out.oriented_fasta
 	)
 
 	TRIM_TO_PACBIO_AMPLICONS (
-		MAP_FASTQ.out
+		MAP_FASTQ.out.mapped_bam
 	)
 
 	FILTER_HARD_CLIPPED_AMPLICONS (
-		TRIM_TO_PACBIO_AMPLICONS.out
+		TRIM_TO_PACBIO_AMPLICONS.out.trimmed_bam
 	)
 	
 	RENAME_CLUSTERS (
-		FILTER_HARD_CLIPPED_AMPLICONS.out
+		FILTER_HARD_CLIPPED_AMPLICONS.out.clipped_fasta
 	)
 	
-	MERGE_PER_MAMU_CLUSTERS (
-		RENAME_CLUSTERS.out
-			.filter { it[2] == "mamu" }
-			.map { fasta, sample, animal -> fasta }
-			.collect()
-	)
-	
-	MERGE_PER_MAFA_CLUSTERS (
-		RENAME_CLUSTERS.out
-			.filter { it[2] == "mafa" }
-			.map { fasta, sample, animal -> fasta }
+	MERGE_PER_SAMPLE_CLUSTERS (
+		RENAME_CLUSTERS.out.renamed_fasta
+			.map { fasta, sample-> fasta }
 			.collect()
 	)
 	
 	SHARED_ANIMALS (
-		MERGE_PER_MAMU_CLUSTERS.out
-			.mix (
-				MERGE_PER_MAFA_CLUSTERS.out
-			)
+		MERGE_PER_SAMPLE_CLUSTERS.out.merged_fasta
 	)
 	
 	RENAME_PUTATIVE_ALLELE_CLUSTERS (
@@ -67,20 +56,17 @@ workflow {
 	)
 	
 	MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA (
-		RENAME_PUTATIVE_ALLELE_CLUSTERS.out,
-		PARSE_IPD_GENBANK.out.gdna
+		RENAME_PUTATIVE_ALLELE_CLUSTERS.out.renamed_clusters,
+		PARSE_IPD_GENBANK.out.ipd_gdna
 	)
 	
 	FILTER_EXACT_GDNA_MATCHES (
-		MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA.out,
-		RENAME_PUTATIVE_ALLELE_CLUSTERS.out
-			.map { fasta, animal -> fasta },
-		PARSE_IPD_GENBANK.out.gdna
+		MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA.out.all_mappings
 	)
 	
 	DEFINE_CDNA_MATCHES_AND_NOVELS (
-		FILTER_EXACT_GDNA_MATCHES.out.cdna_matches,
-		PARSE_IPD_GENBANK.out.cdna
+		FILTER_EXACT_GDNA_MATCHES.out.no_gdna_matches_fasta,
+		PARSE_IPD_GENBANK.out.ipd_cdna
 	)
 
 	// MAP_SHARED_CLUSTERS_TO_CDNA_WITH_MUSCLE (
@@ -104,26 +90,21 @@ workflow {
 	// 	RENAME_MUSCLE_CDNA_MATCHES_FASTA.out
 	// )
 	
-	// MERGE_READS (
-	// 	PARSE_IPD_GENBANK.out.gdna,
-	// 	EXTRACT_NOVEL_SEQUENCES.out,
-	// 	RENAME_MUSCLE_CDNA_MATCHES_FASTA.out
-	// 		.map { matches, animal -> matches }
-	// )
+	MERGE_READS (
+		PARSE_IPD_GENBANK.out.ipd_gdna,
+		DEFINE_CDNA_MATCHES_AND_NOVELS.out.cdna,
+		DEFINE_CDNA_MATCHES_AND_NOVELS.out.novel
+	)
 	
-	// CLUSTAL_ALIGN (
-	// 	MERGE_READS.out,
-	// 	EXTRACT_NOVEL_SEQUENCES.out
-	// 		.map { novel, animal -> novel }
-	// )
+	CLUSTAL_ALIGN (
+		MERGE_READS.out
+	)
 	
-	// PARSE_DISTANCES (
-	// 	CLUSTAL_ALIGN.out.distances,
-	// 	EXTRACT_NOVEL_SEQUENCES.out
-	// 		.map { novel, animal -> novel },
-	// 	FILTER_EXACT_GDNA_MATCHES.out.cdna_matches
-	// 		.map { matches, animal -> matches }
-	// )
+	PARSE_DISTANCES (
+		CLUSTAL_ALIGN.out.distances,
+		DEFINE_CDNA_MATCHES_AND_NOVELS.out.novel,
+		DEFINE_CDNA_MATCHES_AND_NOVELS.out.cdna
+	)
 	
 	// CREATE_GENOTYPING_FASTA (
 	// 	RENAME_PUTATIVE_ALLELE_CLUSTERS.out
@@ -176,23 +157,30 @@ params.ipd_refs = params.classify_resources + "/" + "*.gbk"
 // --------------------------------------------------------------- //
 
 process ORIENT_FASTQ {
-	
-	// use vsearch orient command to ensure reads are all in the same orientation
-	// this avoids complex reverse complementing some contigs in subsequent steps
-	
+	/*
+	* Process: ORIENT_FASTQ
+	* Description: Use vsearch orient command to ensure reads are all in the same orientation.
+	* This avoids complex reverse complementing some contigs in subsequent steps.
+	*/
+
+	// Set process label and publish directory for output files
 	tag "${sample}"
 	publishDir params.orient_fastq, mode: 'copy'
 	
+	// Set process settings for resource allocation and error handling
 	cpus 1
 	errorStrategy 'retry'
 	maxRetries 4
 	
+	// Define input parameters for the process
 	input:
-	tuple path(fasta), val(sample), val(animal)
+	tuple path(fasta), val(sample)
 	
+	// Define output parameters for the process
 	output:
-	tuple path("*.fasta"), val(sample), val(animal)
+	tuple path("${sample}.fasta"), val(sample), emit: oriented_fasta
 	
+	// Define the script to execute for the process
 	script:
 	"""
 	vsearch --orient ${fasta} \
@@ -202,26 +190,34 @@ process ORIENT_FASTQ {
 }
 
 process MAP_FASTQ {
+	
+	/*
+	* Process: MAP_FASTQ
+	* Description: Use minimap2 to map SPAdes contigs to combined DPA, DPB, DQA, DQB, DRB reference FASTA.
+	* This reference sequence contains 1kb of flanking sequence at end of each gene,
+	* which is needed to ensure that indels near the PacBio amplicon ends map correctly.
+	* After mapping, use samtools to sort the minimap2 output and convert to BAM file.
+	*/
 
-	// use minimap2 to map SPAdes contigs to combined DPA, DPB, DQA, DQB, DRB reference FASTA
-	// this reference sequence contains 1kb of flanking sequence at end of each gene
-	// this is needed to ensure that indels near the PacBio amplicon ends map correctly
-	// after mapping, use samtools to sort the minimap2 output and convert to BAM file
-
+	// Set process label and publish directory for output files
 	tag "${sample}"
 	publishDir params.map_fastq, mode: 'copy'
 	
+	// Set process settings for resource allocation and error handling
 	cpus 1
 	memory '2.5 GB'
 	errorStrategy 'retry'
 	maxRetries 4
 	
+	// Define input parameters for the process
 	input:
-	tuple path(fasta), val(sample), val(animal)
+	tuple path(fasta), val(sample)
 	
+	// Define output parameters for the process
 	output:
-	tuple path("*.bam"), val(sample), val(animal)
-
+	tuple path("${sample}_mapped.bam"), val(sample), emit: mapped_bam
+	
+	// Define the script to execute for the process
 	script:
 	"""
 	minimap2 -ax asm20 \
@@ -234,27 +230,32 @@ process MAP_FASTQ {
 }
 
 process TRIM_TO_PACBIO_AMPLICONS {
-	
-	// use samtools ampliconclip to trim mapped sequences to PacBio amplicon coordinates
-	// this needs a BED file with the amplicon coordinates
-	// the coordinates are relative to the 1kb extended reference sequences
-	// when using ampliconclip need to take advantage of strand information
-	// to trim the correct end of the sequence
-	// 9100bp tolerance is needed because this is where PacBio amplicon is relative to 1kb extended DRB reference sequence
-	
+	/*
+	* Process: TRIM_TO_PACBIO_AMPLICONS
+	* Description: Use samtools ampliconclip to trim mapped sequences to PacBio amplicon coordinates.
+	* This requires a BED file with the amplicon coordinates relative to the 1kb extended reference sequences.
+	* When using ampliconclip, it is necessary to take advantage of strand information to trim the correct end of the sequence.
+	* A 9100bp tolerance is required because this is where the PacBio amplicon is relative to the 1kb extended DRB reference sequence.
+	*/
+
+	// Set process label and publish directory for output files
 	tag "${sample}"
 	publishDir params.trim_to_pacbio_amplicons, mode: 'copy'
 	
+	// Set process settings for resource allocation and error handling
 	cpus 1
 	errorStrategy 'retry'
 	maxRetries 4
 	
+	// Define input parameters for the process
 	input:
-	tuple path(bam), val(sample), val(animal)
+	tuple path(bam), val(sample)
 	
+	// Define output parameters for the process
 	output:
-	tuple path("*.bam"), val(sample), val(animal)
+	tuple path("${sample}_trimmed.bam"), val(sample), emit: trimmed_bam
 	
+	// Define the script to execute for the process
 	script:
 	"""
 	samtools ampliconclip \
@@ -273,24 +274,52 @@ process TRIM_TO_PACBIO_AMPLICONS {
 }
 
 process FILTER_HARD_CLIPPED_AMPLICONS {
+	/*
+	* FILTER_HARD_CLIPPED_AMPLICONS
+	*
+	* This process filters sequences that span the entire PacBio amplicon.
+	* After running ampliconclip, sequences that have hard clips at both ends are the ones we want.
+	* This process uses a custom script to filter these sequences.
+	*/
+
 	
-	// for sequences to be alleles, they need to span the entire PacBio amplicon
-	// after running ampliconclip, sequences that have hard clips at both ends are the ones we want
-	// use a custom script to filter these sequences
-	
+	/*
+	 * Other parameters:
+	 *   - tag: tag for the process
+	 *   - publishDir: directory to publish output files to
+	 */
 	tag "${sample}"
 	publishDir params.filter_hard_clipped_amplicons, mode: 'copy'
-	
+
+	// Set process settings for resource allocation and error handling
 	cpus 1
 	errorStrategy 'retry'
 	maxRetries 4
-	
+
+	/*
+	 * Input parameters:
+	 *   - bam: path to the BAM file containing mapped sequences hard clipped to the PacBio amplicon
+	 *   - sample: sample name
+	 */
 	input:
-	tuple path(bam), val(sample), val(animal)
+	tuple path(bam), val(sample)
 	
+	/*
+	 * Output parameters:
+	 *   - fasta: path to the output FASTA file containing filtered sequences with hard clipped sequences removed
+	 *   - sample: sample name
+	 */
 	output:
-	tuple path("*.fasta"), val(sample), val(animal)
+	tuple path("${sample}_filtered.fasta"), val(sample), emit: clipped_fasta
 	
+
+	/*
+	 * Execution script:
+	 *   - Indexes the trimmed BAM file so it can be parsed by pysam
+	 *   - Calls a Python script to filter sequences with hard clips at both ends
+	 *   - Converts the filtered BAM file to a FASTA file
+	 */
+
 	script:
 	"""
 	samtools index ${sample}_trimmed.bam
@@ -303,19 +332,17 @@ process FILTER_HARD_CLIPPED_AMPLICONS {
 }
 
 process RENAME_CLUSTERS {
-	
-	// prepend sample name to cluster names. This makes it easier to track which sequences are associated with which clusters.
-	
+	// Prepend sample name to cluster names. This makes it easier to track which sequences are associated with which clusters.
+
 	tag "${sample}"
-	
 	errorStrategy 'retry'
 	maxRetries 4
 	
 	input:
-	tuple path(fasta), val(sample), val(animal)
+	tuple path(fasta), val(sample)
 	
 	output:
-	tuple path("*.fasta.gz"), val(sample), val(animal)
+	tuple path("${sample}.fasta.gz"), val(sample), emit: renamed_fasta
 	
 	script:
 	"""
@@ -328,10 +355,14 @@ process RENAME_CLUSTERS {
 	"""
 }
 
-process MERGE_PER_MAMU_CLUSTERS {
-	
-	// gymnastics with per-sample merged FASTA to merge mamu samples after all have been created - need to wait until rename_clusters completes before running this step
-	
+process MERGE_PER_SAMPLE_CLUSTERS {
+	/*
+	This process merges per-sample clusters into a single file.
+	The input to this process is a list of per-sample merged FASTA files.
+	It uses zcat and gzip to merge all the files and outputs a single FASTA file containing all the merged clusters.
+	The output file is published to the `merged_clusters` directory specified in the parameters.
+	*/
+
 	publishDir params.merged_clusters, mode: 'copy'
 	
 	errorStrategy 'retry'
@@ -341,52 +372,29 @@ process MERGE_PER_MAMU_CLUSTERS {
 	path(mamu_list)
 	
 	output:
-	tuple path("*fasta.gz"), val("mamu")
+	path("merged_clusters.fasta.gz"), emit: merged_fasta
 	
 	script:
 	"""
-	zcat *.fasta.gz | gzip > merged_mamu_clusters.fasta.gz
+	zcat *.fasta.gz | gzip > merged_clusters.fasta.gz
 	"""
-
-}
-
-process MERGE_PER_MAFA_CLUSTERS {
-	
-	// gymnastics with per-sample merged FASTA to merge mafa samples after all have been created - need to wait until rename_clusters completes before running this step
-	
-	publishDir params.merged_clusters, mode: 'copy'
-	
-	errorStrategy 'retry'
-	maxRetries 4
-	
-	input:
-	path(mafa_list)
-	
-	output:
-	tuple path("*fasta.gz"), val("mafa")
-	
-	script:
-	"""
-	zcat *.fasta.gz | gzip > merged_mafa_clusters.fasta.gz
-	"""
-
 }
 
 process SHARED_ANIMALS {
-	
-	// run bbbmap dedupe.sh on each sample, finding exact matches, absorbing containments, and finding overlaps that are at least 3kb long.
-	// this requires a three step process:
-	// 1. Run dedupe.sh and output a FASTA file containing all singletons and duplicated sequences
-	// 2. Run dedupe.sh again and output a FASTA file containing only singletons.
-	// 
-	// Now there are singleton sequences in both FASTA files, but sequences that are duplicates (and by definition found in more than one animal)
-	// in only one file. So if we find the sequences that are unique *between* these two files, we are left with only the duplicate sequences.
-	// So step 3:
-	// 3. Remove singleton sequences found in both files
-	// 
-	// A version of this is described in https://jgi.doe.gov/data-and-tools/bbtools/bb-tools-user-guide/dedupe-guide/
-	
-	tag "${animal}"
+	/*
+	* Run bbbmap dedupe.sh on each sample, finding exact matches, absorbing containments, and finding overlaps that are at least 3kb long.
+	* This requires a three-step process:
+	* 1. Run dedupe.sh and output a FASTA file containing all singletons and duplicated sequences
+	* 2. Run dedupe.sh again and output a FASTA file containing only singletons.
+	* 
+	* Now there are singleton sequences in both FASTA files, but sequences that are duplicates (and by definition found in more than one animal)
+	* in only one file. So if we find the sequences that are unique *between* these two files, we are left with only the duplicate sequences.
+	* So step 3:
+	* 3. Remove singleton sequences found in both files
+	* 
+	* A version of this is described in https://jgi.doe.gov/data-and-tools/bbtools/bb-tools-user-guide/dedupe-guide/
+	*/
+
 	publishDir params.shared_clusters, mode: 'copy'
 	
 	cpus 1
@@ -394,58 +402,51 @@ process SHARED_ANIMALS {
 	maxRetries 4
 	
 	input:
-	tuple path(fasta), val(animal)
+	tuple path(fasta)
 	
 	output:
-	tuple path("*shared.fasta"), val(animal), emit: shared
-	tuple path("*all.fasta"), val(animal), emit: all
-	tuple path("*unique.fasta"), val(animal), emit: unique
-	tuple path("*putative_alleles_temp.fasta"), val(animal), emit: putative
-	
+	tuple path("putative_alleles_temp.fasta"), emit: putative
 	
 	script:
 	"""
 	dedupe.sh -Xmx1g \
 	in=${fasta} \
-	outbest=${animal}_all.fasta \
+	outbest=all.fasta \
 	am=t ac=f arc=t fo c fcc nam=4 threads=${task.cpus}
 	
 	dedupe.sh -Xmx1g \
 	in=${fasta} \
-	out=${animal}_unique.fasta \
+	out=unique.fasta \
 	am=t ac=f arc=t fo fcc uniqueonly=t threads=${task.cpus}
 	
 	dedupe.sh -Xmx1g \
-	in=${animal}_all.fasta,${animal}_unique.fasta \
-	out=${animal}_shared.fasta \
+	in=all.fasta,unique.fasta \
+	out=shared.fasta \
 	ac=f uniqueonly=t threads=${task.cpus}
 	
 	dedupe.sh -Xmx1g \
 	in=${fasta} \
-	out=${animal}_putative_alleles_temp.fasta \
+	out=putative_alleles_temp.fasta \
 	ac=t threads=${task.cpus}
 	"""
-
+	
 }
 
 process RENAME_PUTATIVE_ALLELE_CLUSTERS {
 	
-	// add integer FASTA id to gdna_match FASTA name
-	// this simplifies downstream analyses, where the FASTA description can be complex and the FASTA id is simple
-	// since previous steps are nondeterminisitic, add timestamp to id too
-	// this makes it easier to clarify which files are used for genotyping
+	// Add integer FASTA id to gdna_match FASTA name to simplify downstream analyses.
+	// A timestamp is also added to the id to help identify the files used for genotyping.
 	
-	tag "${animal}"
 	publishDir params.shared_clusters, mode: 'copy'
 	
 	errorStrategy 'retry'
 	maxRetries 4
 	
 	input:
-	tuple path(putative), val(animal)
+	tuple path(putative)
 	
 	output:
-	tuple path("*putative_alleles.fasta"), val(animal)
+	tuple path("putative_alleles.fasta"), emit: renamed_clusters
 	
 	script:
 	"""
@@ -456,7 +457,7 @@ process RENAME_PUTATIVE_ALLELE_CLUSTERS {
 	from Bio.Seq import Seq
 	from datetime import datetime
 	
-	with open("${animal}" + "_putative_alleles.fasta", "w") as handle:
+	with open("putative_alleles.fasta", "w") as handle:
 		for idx, record in enumerate(SeqIO.parse("${putative}", "fasta")):
 			now = datetime.now()
 			time = now.strftime("%Y%m%d%H%M%S")
@@ -468,10 +469,8 @@ process RENAME_PUTATIVE_ALLELE_CLUSTERS {
 
 process PARSE_IPD_GENBANK {
 	
-	// use biopython to take IPD Genbank file and separate into FASTA
-	// of genomic DNA (intron containing) sequences and cDNA sequences (no intron)
+	// Use Biopython to extract genomic DNA and cDNA sequences from an IPD Genbank file. The output files are saved as FASTA format..
 	
-	tag "${animal_name}"
 	publishDir params.ipd_ref_sep, mode: 'copy'
 	
 	cpus 1
@@ -482,11 +481,8 @@ process PARSE_IPD_GENBANK {
 	path(guide_fasta)
 	
 	output:
-	path("*gdna_reference.fasta"), emit: gdna
-	path("*cdna_reference.fasta"), emit: cdna
-	
-	script:
-	animal_name = guide_fasta.simpleName.substring(8,12)
+	path("gdna_reference.fasta"), emit: ipd_gdna
+	path("cdna_reference.fasta"), emit: ipd_cdna
 	
 	"""
 	ipd_to_gdna_cdna.py ${guide_fasta} ${animal_name}
@@ -496,111 +492,92 @@ process PARSE_IPD_GENBANK {
 
 process MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA {
 	
-	// identify putative alleles whose sequences match full-length gDNA sequences already in IPD.
-	// save SAM file of reads that map to known IPD alleles and FASTA.gz file of reads that do not.
+	// Use minimap2 to map putative alleles whose sequences match full-length genomic DNA (gDNA) sequences already in the IPD database.
+	// Save a SAM file of reads that map to known IPD alleles and a gzipped FASTA file of reads that do not.
 	
-	tag "${putative_animal}"
-	
-	cpus 1
+	cpus 3
 	errorStrategy 'retry'
 	maxRetries 4
 	
-	when:
-	putative_animal == gdna.simpleName.substring(0,4)
-	
 	input:
-	tuple path(putative), val(putative_animal)
-	each path(gdna) 
+	path(putative_alleles)
+	path(ipd_gdna) 
 	
 	output:
-	tuple path("*all_mappings.sam"), val(putative_animal)
+	path("all_mappings.sam"), emit: all_mappings
 	
 	script:
 	"""
-	minimap2 \
-	-t ${task.cpus} \
-	${gdna} \
-	${putative} \
+	minimap2 -t ${task.cpus} \
+	${ipd_gdna} \
+	${putative_alleles} \
 	-ax splice -N 10000 \
-	> ${putative_animal}_all_mappings.sam
+	> all_mappings.sam
 	"""
-	
-
 }
 
 process FILTER_EXACT_GDNA_MATCHES {
 	
-	// filter mappings to only those that have NM:i:0 (no mismatches)
-	// use filterlines.sh tool
-	
-	tag "${putative_animal}"
-	publishDir params.gdna_identical, pattern: '*gdna_match.sam', mode: 'copy'
-	publishDir params.cdna_identical, pattern: '*no-gdna_match.fasta', mode: 'copy'
+	// Filter mappings to only include reads that have an exact match to gDNA sequences (no mismatches).
+	// Use the `filterlines.sh` tool to filter SAM files by NM:i:0 tag and `filterbyname.sh` to filter out
+	// FASTA sequences that have matches in the filtered SAM files.
 	
 	cpus 1
 	errorStrategy 'retry'
 	maxRetries 4
 	
-	when:
-	putative_animal == fasta.simpleName.substring(0,4) && putative_animal == gdna.simpleName.substring(0,4)
-	
 	input:
-	tuple path(sam), val(putative_animal)
-	each path(fasta)
-	each path(gdna)
+		path(all_mappings_sam)
 	
 	output:
-	tuple path("*_gdna_match.sam"), val(putative_animal), emit: gdna_matches
-	tuple path("*_no-gdna_match.fasta"), val(putative_animal), emit: cdna_matches
+		path("gdna_match.sam"), emit: gdna_matches_sam
+		path("*_no-gdna_match.fasta"), emit: no_gdna_matches_fasta
 	
 	script:
 	"""
 	filterlines.sh \
-	in=${sam} \
-	out=${putative_animal}_gdna_match.sam \
-	names=NM:i:0 \
-	substring=t \
-	include=t
+		in=${all_mappings_sam} \
+		out=gdna_match.sam \
+		names=NM:i:0 \
+		substring=t \
+		include=t
 	
 	filterbyname.sh \
-	in=${fasta} \
-	names=${putative_animal}_gdna_match.sam \
-	out=${putative_animal}_no-gdna_match.fasta
+		in=${fasta} \
+		names=gdna_match.sam \
+		out=no-gdna_match.fasta
 	"""
-
+	
 }
 
 process DEFINE_CDNA_MATCHES_AND_NOVELS {
-	// run python script to define cDNA matches and novel alleles
-	
-	tag "${putative_animal}"
-	publishDir params.cdna_identical, pattern: '*merged.aln', mode: 'copy'
-	publishDir params.cdna_identical, pattern: '*gdna_single_temp.fasta', mode: 'copy'
-	
+
+	// Run Python script to define cDNA matches and novel alleles
+	// Input files are FASTA files of IPD cDNA sequences and putative allele sequences that did not match existing IPD genomic DNA sequence
+	// Output files are two FASTA files: one containing cDNA matches and one containing novel cDNA alleles
+
 	cpus 1
 	errorStrategy 'retry'
 	maxRetries 4
 
 	input:
-	tuple path(cdna_matches), val(putative_animal)
-	path(cdna)
+	path(no_gdna_matches)
+	path(ipd_cdna)
 	
 	output:
-	tuple path("cdna.gbk"), val(putative_animal), emit: merged
-	tuple path("novel.fasta"), val(putative_animal)
+	path("cdna.fasta"), emit: cdna_extensions_fasta
+	path("novel.fasta"), emit: novel_alleles_fasta
 	
 	script:
 	"""
-	minimap2 -ax splice \
-	${cdna_matches} \
-	${cdna} \
-	--eqx --sam-hit-only \
-	| samtools sort \
-	> mapped.bam \
-	&& samtools index mapped.bam
+	# Use minimap2 and samtools to generate a BAM file of mapped cDNA reads
+	minimap2 -ax splice ${no_gdna_matches} ${ipd_cdna} --eqx --sam-hit-only | samtools sort > mapped.bam && samtools index mapped.bam
 
-	cdna_matches.py mapped.bam ${cdna_matches}
+	# Run a Python script to determine which cDNA sequences are matches and which are novel alleles
+	cdna_matches.py mapped.bam ${no_gdna_matches}
 	"""	
+}
+
 
 }
 
@@ -767,21 +744,18 @@ process MERGE_READS {
 	
 	errorStrategy 'retry'
 	maxRetries 4
-	
-	when:
-	novel_animal == cdna_matches.simpleName.substring(0,4) && novel_animal == gdna_ref.simpleName.substring(0,4)
-	
 	input:
-	each path(gdna_ref)
-	tuple path(novel), val(novel_animal)
-	each path(cdna_matches)
+	
+	path(gdna_ref)
+	path(cdna_match)
+	path(novel)
 	
 	output:
-	tuple path("*reads.fasta"), val(novel_animal)
+	path("*reads.fasta")
 	
 	script:
 	"""
-	cat ${gdna_ref} ${novel} ${cdna_matches} > ${novel_animal}_reads.fasta
+	cat ${gdna_ref} ${cdna_match} ${novel} > merged_pre_clustal_reads.fasta
 	"""
 
 }
@@ -791,30 +765,28 @@ process CLUSTAL_ALIGN {
 	// align reads with clustal omega
 	// generate alignment in fasta format and distance matrix
 	// distance matrix can be used to parse closest matches to known alleles
-	
+	cpus 40
+  	executor 'local'
+
 	tag "${reads_animal}"
 	publishDir params.novel_alleles, pattern: '*distances.txt', mode: 'copy'
 	
 	errorStrategy 'retry'
 	maxRetries 4
 	
-	when:
-	reads_animal == novel.simpleName.substring(0,4)
-	
 	input:
-	tuple path(reads), val(reads_animal)
-	each path(novel)
+	path(merged)
 	
 	output:
-	tuple path("*aligned.fasta"), val(reads_animal)
-	tuple path("*distances.txt"), val(reads_animal), emit: distances
-	
+	path("*aligned.fasta"), emit: aligned
+	path("*distances.txt"), emit: distances
+
 	script:
 	"""
 	clustalo \
-	--infile=${reads} \
-	--outfile=${reads_animal}_aligned.fasta \
-	--distmat-out=${reads_animal}_distances.txt \
+	--infile=${merged} \
+	--outfile=aligned.fasta \
+	--distmat-out=distances.txt \
 	--threads=${task.cpus} \
 	--full
 	"""
@@ -830,21 +802,18 @@ process PARSE_DISTANCES {
 	errorStrategy 'retry'
 	maxRetries 4
 	
-	when:
-	clustal_animal == novel.simpleName.substring(0,4) && clustal_animal == cdna_matches.simpleName.substring(0,4)
-	
 	input:
-	tuple path(distances), val(clustal_animal)
-	each path(novel)
-	each path(cdna_matches)
+	path(distances)
+	path(novel)
+	path(cdna_matches)
 	
 	output:
-	tuple path("*novel_closest_matches.xlsx"), val(clustal_animal), emit: closest_matches
-	tuple path("*distances_tmp.txt"), val(clustal_animal)
+	path("*novel_closest_matches.xlsx"), emit: closest_matches
+	path("*distances_tmp.txt"), emit: distances
 	
 	script:
 	"""
-	parse_clustalo_distances.py ${clustal_animal} ${novel} ${cdna_matches}
+	parse_clustalo_distances.py ${novel} ${cdna_matches}
 	"""
 
 }

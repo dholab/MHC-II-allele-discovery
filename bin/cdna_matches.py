@@ -6,9 +6,6 @@ from Bio import SeqIO
 from Bio.SeqFeature import SeqFeature, FeatureLocation, CompoundLocation
 from Bio.SeqRecord import SeqRecord
 
-mapped_bam = sys.argv[1]
-no_gdna_match_fasta = sys.argv[2]
-
 def removeSpecialCharacters(in_str, special_characters='*|: ', replace_character='_'):
     '''remove specified special characters from input str'''
     
@@ -17,18 +14,25 @@ def removeSpecialCharacters(in_str, special_characters='*|: ', replace_character
     return out_str
 
 # Open a BAM file for reading
-bam_file = mapped_bam
+bam_file = sys.argv[1]
 bam = pysam.AlignmentFile(bam_file, "rb")
 
-# Read the cDNA reference FASTA
-fasta_file = no_gdna_match_fasta
+# Make set of sequences that match known cDNA sequences
+cdna_matches = set()
 
-# Open Genbank file
-# Save annotated cDNA reference with exon coordinates marked
-with open("cdna_matches.gbk", "w") as cdna_extension_handle, open("novel_matches.fasta", "w") as novel_extension_handle:
+# Read the cDNA reference FASTA
+fasta_file = sys.argv[2]
+
+# Open Genbank files for cDNA extensions and novel sequences
+with open("cdna.fasta", "w") as cdna_output_handle, open("novel.fasta", "w") as novel_output_handle:
 
   # Loop over the reads in the BAM file
   for read in bam:
+      
+      # Skip unmapped reads
+      if read.is_unmapped:
+        continue
+
       # Parse the CIGAR string for the read
       cigar = read.cigar
 
@@ -39,17 +43,6 @@ with open("cdna_matches.gbk", "w") as cdna_extension_handle, open("novel_matches
           if op == 8:
               mismatch_count = 1
 
-      # if number of mismatches is > 0
-      # it is a novel allele
-      # output to novel_matches.fasta
-      if mismatch_count > 0:
-        records = list(SeqIO.parse(fasta_file, "fasta"))
-
-        for record in records:
-          # Find matching record
-          if read.reference_name == record.name:
-            SeqIO.write(record, novel_extension_handle, "fasta")
-      
       if mismatch_count == 0:
         
         # Find the corresponding sequence record in the reference FASTA
@@ -126,11 +119,22 @@ with open("cdna_matches.gbk", "w") as cdna_extension_handle, open("novel_matches
             record.annotations["molecule_type"] = "DNA"
 
             # Write output file
-            SeqIO.write(record, cdna_extension_handle, "genbank")
+            SeqIO.write(record, cdna_output_handle, "fasta")
 
-            # Print the final gap, if there is one
-            if gap_start is not None:
-                print("- %s:%d-%d" % (chrom, gap_start, gap_end))
+            # Add sequence name to matched cDNA set
+            cdna_matches.add(read.reference_name)
+
+  # determine which reference sequences do not have cdna_matches 
+  bam_ref_names = set(bam.references)
+  novel_references = bam_ref_names.difference(cdna_matches)
+  
+  # Use SeqIO.parse() to read the FASTA file
+  records = list(SeqIO.parse(fasta_file, "fasta"))
+  for record in records:
+      # Check if the record name matches the desired name
+      if record.id in novel_references:
+          # Print novel output file
+          SeqIO.write(record, novel_output_handle, "fasta")
 
   # Close the BAM file
   bam.close()
