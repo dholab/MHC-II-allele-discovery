@@ -612,10 +612,9 @@ process FIND_CLOSEST_MATCHES {
 	
 	script:
 	"""
-	parse_clustal_distances.py ${novel} ${cdna_matches}
+	parse_clustalo_distances.py ${novel} ${cdna_matches}
 	"""
 
-	cpus 1
 }
 
 process CREATE_GENOTYPING_FASTA {
