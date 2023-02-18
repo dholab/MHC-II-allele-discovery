@@ -83,12 +83,12 @@ workflow {
 		DEFINE_CDNA_MATCHES_AND_NOVELS.out.cdna_extensions_fasta
 	)
 	
-	// CREATE_GENOTYPING_FASTA (
-	// 	RENAME_PUTATIVE_ALLELE_CLUSTERS.out.renamed_clusters,
-	// 	PARSE_IPD_GENBANK.out.ipd_gdna,
-	// 	DEFINE_CDNA_MATCHES_AND_NOVELS.out.cdna,
-	// 	FIND_CLOSEST_MATCHES.out.closest_matches
-	// )
+	CREATE_GENOTYPING_FASTA (
+		RENAME_PUTATIVE_ALLELE_CLUSTERS.out.renamed_clusters,
+		PARSE_IPD_GENBANK.out.ipd_gdna,
+		DEFINE_CDNA_MATCHES_AND_NOVELS.out.cdna_extensions_fasta,
+		FIND_CLOSEST_MATCHES.out.closest_matches
+	)
 	
 	// PRELIMINARY_EXONERATE_PUTATIVE (
 	// 	CREATE_GENOTYPING_FASTA.out.new_allele
@@ -618,34 +618,32 @@ process FIND_CLOSEST_MATCHES {
 }
 
 process CREATE_GENOTYPING_FASTA {
-	
-	// Create a FASTA file that contains putative alleles along with their classification for genotyping IPD gDNA matches, 
-    // cDNA matches, and novel sequences. 
-    //
-    // The file will contain only cDNA extensions and novel alleles.
-	
-	errorStrategy 'retry'
-	maxRetries 4
-	
-	when:
-	putative.simpleName.substring(0,4) == gdna_ref.simpleName.substring(0,4) && putative.simpleName.substring(0,4) == matches.simpleName.substring(0,4) && putative.simpleName.substring(0,4) == closest_animal
-	
-	input:
-	each path(putative)
-	each path(gdna_ref)
-	each path(matches)
-	tuple path(closest_matches), val(closest_animal)
-	
-	output:
-	path("classified.fasta"), emit: cdna_extension_fasta
-	path("putative.fasta"), emit: putative_novel_allele_fasta
-	
-	script:
-	"""
-	create_genotyping_fasta.py ${closest_animal} ${putative} ${gdna_ref} ${matches}
-	"""
 
+    /*
+    Create a FASTA file that contains putative alleles along with their classification 
+    for genotyping IPD gDNA matches, cDNA matches, and novel sequences. 
+    The file will contain only cDNA extensions and novel alleles.
+    */
+	
+    errorStrategy 'retry'
+    maxRetries 4
+	
+    input:
+    path(putative)
+    path(gdna_ref)
+    path(cdna_matches)
+    path(closest_matches)
+	
+    output:
+    path("classified.fasta"), emit: cdna_extension_fasta
+    path("putative.fasta"), emit: putative_novel_allele_fasta
+	
+    script:
+    """
+    create_genotyping_fasta.py ${putative} ${gdna_ref} ${cdna_matches}
+    """
 }
+
 
 process PRELIMINARY_EXONERATE_PUTATIVE {
 	

@@ -118,6 +118,10 @@ with open("cdna.fasta", "w") as cdna_output_handle, open("novel.fasta", "w") as 
             # Set the alphabet to generic DNA
             record.annotations["molecule_type"] = "DNA"
 
+            # Set the record name to the reference name
+            record.id = str(read.reference_name)
+            record.description = str(read.query_name) + '|' + str(read.reference_name)
+
             # Write output file
             SeqIO.write(record, cdna_output_handle, "fasta")
 
