@@ -52,6 +52,12 @@ workflow {
 		RENAME_PUTATIVE_ALLELE_CLUSTERS.out.renamed_clusters,
 		params.classify_genbank
 	)
+
+	GENOTYPE_PUTATIVE(
+		CLASSIFY_PUTATIVE.out.ipd_fasta,
+		CLASSIFY_PUTATIVE.out.all_fasta,
+		MERGE_PER_SAMPLE_CLUSTERS.out.merged_fasta
+	)
 	
 	// MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA (
 	// 	RENAME_PUTATIVE_ALLELE_CLUSTERS.out.renamed_clusters,
@@ -454,6 +460,7 @@ process CLASSIFY_PUTATIVE {
 	path("mystery.gbk"), emit: mystery
 	path("all.gbk"), emit: all_genbank
 	path("all.fasta"), emit: all_fasta
+	path("ipd.fasta"), emit: ipd_fasta
 
 	script:
 	"""
@@ -479,55 +486,10 @@ process CLASSIFY_PUTATIVE {
 
 }
 
-process PARSE_IPD_GENBANK {
+process GENOTYPE_PUTATIVE {
 	
-	// Use Biopython to extract genomic DNA and cDNA sequences from an IPD Genbank file. The output files are saved as FASTA format.
-	
-	cpus 1
-	errorStrategy 'retry'
-	maxRetries 4
-	
-	input:
-	path(ipd_genbank)
-	
-	output:
-	path("gdna_reference.fasta"), emit: ipd_gdna
-	path("cdna_reference.fasta"), emit: ipd_cdna
-	
-	"""
-	ipd_to_gdna_cdna.py ${ipd_genbank}
-	"""
-
-}
-
-process MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA {
-	
-	// Use minimap2 to map putative alleles whose sequences match full-length genomic DNA (gDNA) sequences already in the IPD database.
-	// Save a SAM file of reads that map to known IPD alleles and a gzipped FASTA file of reads that do not.
-	
-	cpus 3
-	errorStrategy 'retry'
-	maxRetries 4
-	
-	input:
-	path(putative_alleles)
-	path(ipd_gdna) 
-	
-	output:
-	path("all_mappings.sam"), emit: all_mappings
-	
-	script:
-	"""
-	minimap2 -t ${task.cpus} \
-	${ipd_gdna} \
-	${putative_alleles} \
-	-ax splice -N 10000 \
-	> all_mappings.sam
-	"""
-}
-
-process FILTER_EXACT_GDNA_MATCHES {
-	
+	// Concatenate IPD database and putative allele FASTA files with nearest IPD match
+	// Map each animal's clusters to the concatenated FASTA file
 	// Filter mappings to only include reads that have an exact match to gDNA sequences (no mismatches).
 	// Use the `filterlines.sh` tool to filter SAM files by NM:i:0 tag and `filterbyname.sh` to filter out
 	// FASTA sequences that have matches in the filtered SAM files.
@@ -537,26 +499,38 @@ process FILTER_EXACT_GDNA_MATCHES {
 	maxRetries 4
 	
 	input:
-		path(all_mappings_sam)
-		path(putative_alleles)
+		path(ipd_fasta)
+		path(all_fasta)
+		path(renamed_per_sample_fasta)
 	
 	output:
-		path("gdna_match.sam"), emit: gdna_matches_sam
-		path("no-gdna_match.fasta"), emit: no_gdna_matches_fasta
+		path("genotypes.sam"), emit: genotypes
 	
 	script:
 	"""
+	# replace sequence names in all_fasta with sequence descriptions
+	create_renamed_fasta.py ${all_fasta}
+	
+	# concatenate IPD fasta and all_fasta_renamed.fasta
+	# this will be the reference FASTA for genotyping
+	cat ${ipd_fasta} all_fasta_renamed.fasta > ipd_plus_putative.fasta
+
+	# map all clusters to all.fasta
+	minimap2 \
+	-ax splice ipd_plus_putative.fasta \
+	${renamed_per_sample_fasta} \
+	--eqx \
+	--sam-hit-only \
+	| samtools sort > mapped.bam \
+	&& samtools index mapped.bam
+
+	# filter SAM file to only include reads that have an exact match to gDNA sequences (no mismatches)
 	filterlines.sh \
-		in=${all_mappings_sam} \
-		out=gdna_match.sam \
+		in=mapped.bam \
+		out=genotypes.sam \
 		names=NM:i:0 \
 		substring=t \
 		include=t
-	
-	filterbyname.sh \
-		in=${putative_alleles} \
-		names=gdna_match.sam \
-		out=no-gdna_match.fasta
 	"""
 	
 }
