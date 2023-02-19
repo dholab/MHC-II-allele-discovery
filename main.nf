@@ -398,7 +398,7 @@ process SHARED_ANIMALS {
 	ac=f uniqueonly=t threads=${task.cpus}
 	
 	dedupe.sh -Xmx1g \
-	in=${fasta} \
+	in=shared.fasta \
 	out=putative_alleles_temp.fasta \
 	ac=t threads=${task.cpus}
 	"""
