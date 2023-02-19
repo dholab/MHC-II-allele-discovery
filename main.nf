@@ -48,47 +48,48 @@ workflow {
 		SHARED_ANIMALS.out.putative
 	)
 	
-	PARSE_IPD_GENBANK (
+	CLASSIFY_PUTATIVE (
+		RENAME_PUTATIVE_ALLELE_CLUSTERS.out.renamed_clusters,
 		params.classify_genbank
 	)
 	
-	MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA (
-		RENAME_PUTATIVE_ALLELE_CLUSTERS.out.renamed_clusters,
-		PARSE_IPD_GENBANK.out.ipd_gdna
-	)
+	// MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA (
+	// 	RENAME_PUTATIVE_ALLELE_CLUSTERS.out.renamed_clusters,
+	// 	PARSE_IPD_GENBANK.out.ipd_gdna
+	// )
 	
-	FILTER_EXACT_GDNA_MATCHES (
-		MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA.out.all_mappings,
-		RENAME_PUTATIVE_ALLELE_CLUSTERS.out.renamed_clusters,
-	)
+	// FILTER_EXACT_GDNA_MATCHES (
+	// 	MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA.out.all_mappings,
+	// 	RENAME_PUTATIVE_ALLELE_CLUSTERS.out.renamed_clusters,
+	// )
 	
-	DEFINE_CDNA_MATCHES_AND_NOVELS (
-		FILTER_EXACT_GDNA_MATCHES.out.no_gdna_matches_fasta,
-		PARSE_IPD_GENBANK.out.ipd_cdna
-	)
+	// DEFINE_CDNA_MATCHES_AND_NOVELS (
+	// 	FILTER_EXACT_GDNA_MATCHES.out.no_gdna_matches_fasta,
+	// 	PARSE_IPD_GENBANK.out.ipd_cdna
+	// )
 	
-	MERGE_CDNA_MATCHES_AND_NOVELS (
-		PARSE_IPD_GENBANK.out.ipd_gdna,
-		DEFINE_CDNA_MATCHES_AND_NOVELS.out.cdna_extensions_fasta,
-		DEFINE_CDNA_MATCHES_AND_NOVELS.out.novel_alleles_fasta
-	)
+	// MERGE_CDNA_MATCHES_AND_NOVELS (
+	// 	PARSE_IPD_GENBANK.out.ipd_gdna,
+	// 	DEFINE_CDNA_MATCHES_AND_NOVELS.out.cdna_extensions_fasta,
+	// 	DEFINE_CDNA_MATCHES_AND_NOVELS.out.novel_alleles_fasta
+	// )
 	
-	CLUSTAL_ALIGN (
-		MERGE_CDNA_MATCHES_AND_NOVELS.out.merged_for_clustal_fasta
-	)
+	// CLUSTAL_ALIGN (
+	// 	MERGE_CDNA_MATCHES_AND_NOVELS.out.merged_for_clustal_fasta
+	// )
 	
-	FIND_CLOSEST_MATCHES (
-		CLUSTAL_ALIGN.out.clustal_distances,
-		DEFINE_CDNA_MATCHES_AND_NOVELS.out.novel_alleles_fasta,
-		DEFINE_CDNA_MATCHES_AND_NOVELS.out.cdna_extensions_fasta
-	)
+	// FIND_CLOSEST_MATCHES (
+	// 	CLUSTAL_ALIGN.out.clustal_distances,
+	// 	DEFINE_CDNA_MATCHES_AND_NOVELS.out.novel_alleles_fasta,
+	// 	DEFINE_CDNA_MATCHES_AND_NOVELS.out.cdna_extensions_fasta
+	// )
 	
-	CREATE_GENOTYPING_FASTA (
-		RENAME_PUTATIVE_ALLELE_CLUSTERS.out.renamed_clusters,
-		PARSE_IPD_GENBANK.out.ipd_gdna,
-		DEFINE_CDNA_MATCHES_AND_NOVELS.out.cdna_extensions_fasta,
-		FIND_CLOSEST_MATCHES.out.closest_matches
-	)
+	// CREATE_GENOTYPING_FASTA (
+	// 	RENAME_PUTATIVE_ALLELE_CLUSTERS.out.renamed_clusters,
+	// 	PARSE_IPD_GENBANK.out.ipd_gdna,
+	// 	DEFINE_CDNA_MATCHES_AND_NOVELS.out.cdna_extensions_fasta,
+	// 	FIND_CLOSEST_MATCHES.out.closest_matches
+	// )
 	
 	// PRELIMINARY_EXONERATE_PUTATIVE (
 	// 	CREATE_GENOTYPING_FASTA.out.new_allele
@@ -427,6 +428,53 @@ process RENAME_PUTATIVE_ALLELE_CLUSTERS {
 			time = now.strftime("%Y%m%d%H%M%S")
 			record.id = str(time) + '-' + str(idx)
 			SeqIO.write(record, handle, "fasta")
+	"""
+
+}
+
+process CLASSIFY_PUTATIVE {
+	
+	// Map known IPD sequences to putative alleles and classify as gDNA (exact or extension), 
+	// cDNA, novel, or mystery (no match to any known IPD sequence)
+	// Output Genbank files for each classification as well as a merged file with all sequences
+	// Also output a FASTA file containing all of the putative alleles with informative names
+	
+	errorStrategy 'retry'
+	maxRetries 4
+	
+	input:
+	path(putative_alleles)
+	path(ipd_genbank)
+	
+	output:
+	path("gdna_ipd.gbk"), emit: gdna_ipd
+	path("gdna_extend.gbk"), emit: gdna_extend
+	path("cdna_extend.gbk"), emit: cdna_extend
+	path("novel.gbk"), emit: novel
+	path("mystery.gbk"), emit: mystery
+	path("all.gbk"), emit: all_genbank
+	path("all.fasta"), emit: all_fasta
+
+	script:
+	"""
+	# convert IPD Genbank file to FASTA
+	ipd_genbank_to_fasta.py ${ipd_genbank}
+
+	# map putative alleles to IPD sequences
+	minimap2 \
+	-ax splice ${putative_alleles} \
+	ipd.fasta \
+	--eqx \
+	--sam-hit-only \
+	| samtools sort > mapped.bam \
+	&& samtools index mapped.bam
+
+	# create empty output files
+	# these will be appended to in the next step
+	touch gdna_ipd.gbk gdna_extend.gbk cdna_extend.gbk novel.gbk mystery.gbk all.gbk all.fasta
+
+	# classify putative alleles
+	classify_putative.py ${putative_alleles}
 	"""
 
 }
