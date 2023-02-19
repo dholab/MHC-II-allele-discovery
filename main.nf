@@ -14,28 +14,32 @@ workflow {
 	
 	// Workflow steps
 	
-	ORIENT_FASTQ (
+	PREFIX_FASTA (
 		ch_sample_manifest
 	)
 
-	MAP_FASTQ (
-		ORIENT_FASTQ.out.oriented_fasta
+	ORIENT_FASTA (
+		PREFIX_FASTA.out.prefixed_fasta
+	)
+
+	MAP_FASTA (
+		ORIENT_FASTA.out.oriented_fasta
 	)
 
 	TRIM_TO_PACBIO_AMPLICONS (
-		MAP_FASTQ.out.mapped_bam
+		MAP_FASTA.out.mapped_bam
 	)
 
 	FILTER_HARD_CLIPPED_AMPLICONS (
 		TRIM_TO_PACBIO_AMPLICONS.out.trimmed_bam
 	)
 	
-	RENAME_CLUSTERS (
-		FILTER_HARD_CLIPPED_AMPLICONS.out.clipped_fasta
-	)
+	// RENAME_CLUSTERS (
+	// 	FILTER_HARD_CLIPPED_AMPLICONS.out.clipped_fasta
+	// )
 	
 	MERGE_PER_SAMPLE_CLUSTERS (
-		RENAME_CLUSTERS.out.renamed_fasta
+		FILTER_HARD_CLIPPED_AMPLICONS.out.clipped_fasta
 			.map { fasta, sample-> fasta }
 			.collect()
 	)
@@ -54,9 +58,11 @@ workflow {
 	)
 
 	GENOTYPE_PUTATIVE(
-		CLASSIFY_PUTATIVE.out.ipd_fasta,
+		PREFIX_FASTA.out.prefixed_fasta
+			.map { fasta, sample-> fasta }
+			.collect(),
 		CLASSIFY_PUTATIVE.out.all_fasta,
-		MERGE_PER_SAMPLE_CLUSTERS.out.merged_fasta
+		
 	)
 	
 	// MAP_SHARED_CLUSTERS_TO_FULL_LENGTH_GDNA (
@@ -138,9 +144,39 @@ workflow {
 // PROCESS SPECIFICATION 
 // --------------------------------------------------------------- //
 
-process ORIENT_FASTQ {
+process PREFIX_FASTA {
 	/*
-	* Process: ORIENT_FASTQ
+	* Process: PREFIX_FASTA
+	* Description: Prefix FASTA reads with sample name
+	* This makes it easier to track reads throughout the workflow
+	*/
+
+	// Set process label and publish directory for output files
+	tag "${sample}"
+	
+	// Set process settings for resource allocation and error handling
+	cpus 1
+	errorStrategy 'retry'
+	maxRetries 4
+	
+	// Define input parameters for the process
+	input:
+	tuple path(fasta), val(sample)
+	
+	// Define output parameters for the process
+	output:
+	tuple path("${sample}.renamed.fasta"), val(sample), emit: prefixed_fasta
+	
+	// Define the script to execute for the process
+	script:
+	"""
+	rename.sh in=${fasta} prefix=${sample} addprefix=t out="${sample}.renamed.fasta"
+	"""
+}
+
+process ORIENT_FASTA {
+	/*
+	* Process: ORIENT_FASTA
 	* Description: Use vsearch orient command to ensure reads are all in the same orientation.
 	* This avoids complex reverse complementing some contigs in subsequent steps.
 	*/
@@ -170,10 +206,10 @@ process ORIENT_FASTQ {
 	"""
 }
 
-process MAP_FASTQ {
+process MAP_FASTA {
 	
 	/*
-	* Process: MAP_FASTQ
+	* Process: MAP_FASTA
 	* Description: Use minimap2 to map SPAdes contigs to combined DPA, DPB, DQA, DQB, DRB reference FASTA.
 	* This reference sequence contains 1kb of flanking sequence at end of each gene,
 	* which is needed to ensure that indels near the PacBio amplicon ends map correctly.
@@ -351,7 +387,7 @@ process MERGE_PER_SAMPLE_CLUSTERS {
 	
 	script:
 	"""
-	zcat *.fasta.gz | gzip > merged_clusters.fasta.gz
+	cat *.fasta | gzip > merged_clusters.fasta.gz
 	"""
 }
 
@@ -494,31 +530,31 @@ process GENOTYPE_PUTATIVE {
 	// Use the `filterlines.sh` tool to filter SAM files by NM:i:0 tag and `filterbyname.sh` to filter out
 	// FASTA sequences that have matches in the filtered SAM files.
 	
-	cpus 1
+	cpus 40
 	errorStrategy 'retry'
 	maxRetries 4
 	
 	input:
-		path(ipd_fasta)
-		path(all_fasta)
-		path(renamed_per_sample_fasta)
-	
+		path(original_renamed_fasta)
+		path(all_putative_fasta)
+		
 	output:
-		path("genotypes.sam"), emit: genotypes
+		path("genotypes.sam"), emit: genotypes_sam
+		path("genotypes.csv"), emit: csv
 	
 	script:
 	"""
 	# replace sequence names in all_fasta with sequence descriptions
-	create_renamed_fasta.py ${all_fasta}
+	create_renamed_fasta.py ${all_putative_fasta}
 	
-	# concatenate IPD fasta and all_fasta_renamed.fasta
-	# this will be the reference FASTA for genotyping
-	cat ${ipd_fasta} all_fasta_renamed.fasta > ipd_plus_putative.fasta
+	# merge renamed source FASTA into single file
+	# retain only animal name in sequence headers
+	cat *.renamed.fasta | sed 's/_.*//' > spades.fasta
 
 	# map all clusters to all.fasta
-	minimap2 \
-	-ax splice ipd_plus_putative.fasta \
-	${renamed_per_sample_fasta} \
+	minimap2 -t ${task.cpus} \
+	-ax asm20 all_putative_fasta_renamed.fasta \
+	spades.fasta \
 	--eqx \
 	--sam-hit-only \
 	| samtools sort > mapped.bam \
@@ -531,6 +567,12 @@ process GENOTYPE_PUTATIVE {
 		names=NM:i:0 \
 		substring=t \
 		include=t
+
+	# create output genotyping CSV file that can be converted to an Excel Pivot Table
+	echo "sample\tallele" > genotypes.csv
+	cut -f 1,3 genotypes.sam \
+	| awk '{OFS="," ; print \$1, \$2}' \
+	>> genotypes.csv
 	"""
 	
 }

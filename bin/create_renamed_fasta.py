@@ -13,7 +13,7 @@ def removeSpecialCharacters(in_str, special_characters='*|: ', replace_character
 sequences_to_rename = sys.argv[1]
 
 # Open the input and output files
-with open(sequences_to_rename, 'r') as input_file, open('all_fasta_renamed.fasta', 'w') as output_file:
+with open(sequences_to_rename, 'r') as input_file, open('all_putative_fasta_renamed.fasta', 'w') as output_file:
     
     # Parse the input file and write the updated records to the output file
     records = SeqIO.parse(input_file, 'fasta')
