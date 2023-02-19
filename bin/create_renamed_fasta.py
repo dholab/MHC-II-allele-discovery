@@ -19,6 +19,6 @@ with open(sequences_to_rename, 'r') as input_file, open('all_fasta_renamed.fasta
     records = SeqIO.parse(input_file, 'fasta')
 
     for record in records:
-        record.name = removeSpecialCharacters(record.description)
-        record.id = removeSpecialCharacters(record.description)
+        record.name = removeSpecialCharacters(record.name)
+        record.id = removeSpecialCharacters(record.id)
         SeqIO.write(record, output_file, 'fasta')

@@ -79,10 +79,10 @@ def annotate_putative(ipd_mapping, putative_allele, match_type, mismatch_count):
     # Add the source feature to the SeqRecord
     annotated_allele.features.append(source_feature)
 
-    # Set the record name to the reference name
-    annotated_allele.id = str(ipd_mapping.reference_name)
-    annotated_allele.name = str(ipd_mapping.reference_name)
-    annotated_allele.description = str(ipd_mapping.query_name) + '|' + str(ipd_mapping.reference_name)
+    # Set the record name and description
+    annotated_allele.id = str(ipd_mapping.query_name) + '|' + str(ipd_mapping.reference_name)
+    annotated_allele.name = str(ipd_mapping.query_name) + '|' + str(ipd_mapping.reference_name)
+    annotated_allele.description = str(ipd_mapping.query_name) + '|' + str(match_type) + '|' + str(mismatch_count)
 
     return(annotated_allele)
 
