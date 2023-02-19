@@ -70,7 +70,8 @@ workflow {
 process PREFIX_FASTA {
 	/*
 	* Process: PREFIX_FASTA
-	* Description: Prefix FASTA reads with sample name
+	* Description: Prefix SPAdes contigs in FASTA format with sample name followed by an underscore
+	* e.g., NODE_2611_length_3380_cov_80.013210 -> r12083_NODE_2611_length_3380_cov_80.013210
 	* This makes it easier to track reads throughout the workflow
 	*/
 
@@ -100,7 +101,7 @@ process PREFIX_FASTA {
 process ORIENT_FASTA {
 	/*
 	* Process: ORIENT_FASTA
-	* Description: Use vsearch orient command to ensure reads are all in the same orientation.
+	* Description: Use vsearch orient command to ensure reads are all in the same orientation relative to MHC class II reference exemplars.
 	* This avoids complex reverse complementing some contigs in subsequent steps.
 	*/
 
@@ -267,30 +268,6 @@ process FILTER_HARD_CLIPPED_AMPLICONS {
 	
 }
 
-process RENAME_CLUSTERS {
-	// Prepend sample name to cluster names. This makes it easier to track which sequences are associated with which clusters.
-
-	tag "${sample}"
-	errorStrategy 'retry'
-	maxRetries 4
-	
-	input:
-	tuple path(fasta), val(sample)
-	
-	output:
-	tuple path("${sample}.fasta.gz"), val(sample), emit: renamed_fasta
-	
-	script:
-	"""
-	rename.sh -Xmx1g \
-	in=${fasta} \
-	out=${sample}.fasta.gz \
-	prefix=${sample} \
-	addprefix=t \
-	threads=${task.cpus}
-	"""
-}
-
 process MERGE_PER_SAMPLE_CLUSTERS {
 	/*
 	This process merges per-sample clusters into a single file.
@@ -326,7 +303,7 @@ process SHARED_ANIMALS {
 	* So step 3:
 	* 3. Remove singleton sequences found in both files
 	* 
-	* A version of this is described in https://jgi.doe.gov/data-and-tools/bbtools/bb-tools-user-guide/dedupe-guide/
+	* A version of this is described in https://jgi.doe.gov/data-and-tools/software-tools/bbtools/bb-tools-user-guide/bbmap-guide/
 	*/
 	
 	cpus 1
@@ -368,6 +345,11 @@ process RENAME_PUTATIVE_ALLELE_CLUSTERS {
 	
 	// Add integer FASTA id to gdna_match FASTA name to simplify downstream analyses.
 	// A timestamp is also added to the id to help identify the files used for genotyping.
+	// Note that this workflow is non-deterministic - the sequence IDs will vary from run-to-run
+	// This means that you cannot compare the same data processed through this workflow at different times
+	// Instead, reprocess the entire data. Typically this is good as you will be adding new
+	// data to an analysis, and the more samples that are included, the greater the likelihood of finding
+	// interesting cDNA extensions and novel alleles
 	
 	errorStrategy 'retry'
 	maxRetries 4
@@ -403,6 +385,9 @@ process CLASSIFY_PUTATIVE {
 	// cDNA, novel, or mystery (no match to any known IPD sequence)
 	// Output Genbank files for each classification as well as a merged file with all sequences
 	// Also output a FASTA file containing all of the putative alleles with informative names
+	// This is a major refactoring of the initial allele discovery workflow that avoids 
+	// the need for MUSCLE, Clustal Omega, and other tools and is much, much faster
+	// TODO : improve handling of adjacent match annotations in CIGAR strings
 	
 	publishDir params.results, mode: 'copy'
 
@@ -454,11 +439,13 @@ process CLASSIFY_PUTATIVE {
 
 process GENOTYPE_PUTATIVE {
 	
-	// Concatenate IPD database and putative allele FASTA files with nearest IPD match
-	// Map each animal's clusters to the concatenated FASTA file
+	// Rename putative allele FASTA files with nearest IPD match
+	// Map each animal's clusters to the putative allele FASTA file
+	// This shows which animals share a particular putative sequence
 	// Filter mappings to only include reads that have an exact match to gDNA sequences (no mismatches).
 	// Use the `filterlines.sh` tool to filter SAM files by NM:i:0 tag and `filterbyname.sh` to filter out
 	// FASTA sequences that have matches in the filtered SAM files.
+	// Then output a CSV version of the genotyping SAM file for use in Excel Pivot Tables.
 	
 	publishDir params.results, mode: 'copy'
 
