@@ -9,6 +9,8 @@ import sys
 # command line parameter of putative alleles
 sequences_to_classify = sys.argv[1]
 
+experiment_number = sys.argv[2]
+
 def removeSpecialCharacters(in_str, special_characters='*|: ', replace_character='_'):
     '''remove specified special characters from input str'''
     
@@ -208,22 +210,22 @@ for record in records:
     if is_gdna:
         annotated_seq = annotate_putative(best_read, record, 'gdna_ipd', best_match)
         # write outputs
-        with open("gdna_ipd.gbk", "a") as output_handle:
+        with open(experiment_number + "-gdna_ipd.gbk", "a") as output_handle:
             SeqIO.write(annotated_seq, output_handle, "genbank")
-        with open("all.gbk", "a") as output_handle:
+        with open(experiment_number + "-all.gbk", "a") as output_handle:
             SeqIO.write(annotated_seq, output_handle, "genbank")
-        with open("all.fasta", "a") as output_handle:
+        with open(experiment_number + "-all.fasta", "a") as output_handle:
             SeqIO.write(annotated_seq, output_handle, "fasta")
         continue
 
     # if the putative allele sequence is already in IPD and can be improved
     if is_gdna_extension:
         annotated_seq = annotate_putative(best_read, record, 'gdna_extend', best_match)
-        with open("gdna_extend.gbk", "a") as output_handle:
+        with open(experiment_number + "-gdna_extend.gbk", "a") as output_handle:
             SeqIO.write(annotated_seq, output_handle, "genbank")
-        with open("all.gbk", "a") as output_handle:
+        with open(experiment_number + "-all.gbk", "a") as output_handle:
             SeqIO.write(annotated_seq, output_handle, "genbank")
-        with open("all.fasta", "a") as output_handle:
+        with open(experiment_number + "-all.fasta", "a") as output_handle:
             SeqIO.write(annotated_seq, output_handle, "fasta")
         continue
 
@@ -231,11 +233,11 @@ for record in records:
     if is_cdna_extension:
         annotated_seq = annotate_putative(best_read, record, 'cdna_extend', best_match)
         # write outputs
-        with open("cdna_extend.gbk", "a") as output_handle:
+        with open(experiment_number + "-cdna_extend.gbk", "a") as output_handle:
             SeqIO.write(annotated_seq, output_handle, "genbank")
-        with open("all.gbk", "a") as output_handle:
+        with open(experiment_number + "-all.gbk", "a") as output_handle:
             SeqIO.write(annotated_seq, output_handle, "genbank")
-        with open("all.fasta", "a") as output_handle:
+        with open(experiment_number + "-all.fasta", "a") as output_handle:
             SeqIO.write(annotated_seq, output_handle, "fasta")
         continue
     
@@ -244,11 +246,11 @@ for record in records:
     if is_novel:
         annotated_seq = annotate_putative(best_read, record, 'novel', best_match)
         # write outputs
-        with open("novel.gbk", "a") as output_handle:
+        with open(experiment_number + "-novel.gbk", "a") as output_handle:
             SeqIO.write(annotated_seq, output_handle, "genbank")
-        with open("all.gbk", "a") as output_handle:
+        with open(experiment_number + "-all.gbk", "a") as output_handle:
             SeqIO.write(annotated_seq, output_handle, "genbank")
-        with open("all.fasta", "a") as output_handle:
+        with open(experiment_number + "-all.fasta", "a") as output_handle:
             SeqIO.write(annotated_seq, output_handle, "fasta")
         continue
 
@@ -256,5 +258,5 @@ for record in records:
     if is_gdna == False and is_gdna_extension == False and is_cdna_extension == False and is_novel == False:
         # mystery sequence that doesn't match anything in IPD
         # Print mystery output file
-        with open("mystery.fasta", "a") as output_handle:
+        with open(experiment_number + "-mystery.fasta", "a") as output_handle:
             SeqIO.write(record, output_handle, "fasta")
