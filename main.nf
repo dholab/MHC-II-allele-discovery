@@ -18,12 +18,8 @@ workflow {
 		ch_sample_manifest
 	)
 
-	ORIENT_FASTA (
-		PREFIX_FASTA.out.prefixed_fasta
-	)
-
 	MAP_FASTA (
-		ORIENT_FASTA.out.oriented_fasta
+		PREFIX_FASTA.out.prefixed_fasta
 	)
 
 	TRIM_TO_PACBIO_AMPLICONS (
@@ -33,9 +29,13 @@ workflow {
 	FILTER_HARD_CLIPPED_AMPLICONS (
 		TRIM_TO_PACBIO_AMPLICONS.out.trimmed_bam
 	)
+
+	ORIENT_FASTA (
+		FILTER_HARD_CLIPPED_AMPLICONS.out.clipped_fasta
+	)
 	
 	MERGE_PER_SAMPLE_CLUSTERS (
-		FILTER_HARD_CLIPPED_AMPLICONS.out.clipped_fasta
+		ORIENT_FASTA.out.oriented_fasta
 			.map { fasta, sample-> fasta }
 			.collect()
 	)
@@ -164,7 +164,7 @@ process MAP_FASTA {
 	// Define the script to execute for the process
 	script:
 	"""
-	minimap2 -ax asm20 \
+	minimap2 -x asm20 --frag=yes --secondary=no -a \
 	${params.combined_reference} \
 	${fasta} \
 	--sam-hit-only --eqx \
