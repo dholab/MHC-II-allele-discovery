@@ -138,7 +138,11 @@ process MAP_FASTA {
 	* This reference sequence contains 1kb of flanking sequence at end of each gene,
 	* which is needed to ensure that indels near the PacBio amplicon ends map correctly.
 	* After mapping, use samtools to sort the minimap2 output and convert to BAM file.
+	* Save mapping results so Roger can inspect region under PacBio amplicon primers
+	* this region gets trimmed in subsequent steps
 	*/
+
+	publishDir "${params.results}/mapped", mode: 'copy'
 
 	// Set process label and publish directory for output files
 	tag "${sample}"
