@@ -265,7 +265,7 @@ process FILTER_HARD_CLIPPED_AMPLICONS {
 	"""
 	samtools index ${sample}_trimmed.bam
 	
-	python ${baseDir}/bin/filter_hard_clipped_ends.py ${sample}_trimmed.bam ${sample}_filtered.bam
+	filter_hard_clipped_ends.py ${sample}_trimmed.bam ${sample}_filtered.bam
 
 	reformat.sh in=${sample}_filtered.bam out=${sample}_filtered.fasta
 	"""
